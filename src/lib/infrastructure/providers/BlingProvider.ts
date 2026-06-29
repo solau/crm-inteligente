@@ -299,6 +299,43 @@ export class BlingProvider {
     }
   }
 
+  // Busca um contato na API v3 pelo telefone
+  async getContactByPhone(phone: string) {
+    const token = await this.getValidToken();
+    if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
+
+    try {
+      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${phone}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await res.json();
+      if (result && result.data && result.data.length > 0) {
+        return result.data[0];
+      }
+      return null;
+    } catch (e) {
+      console.error(`Erro ao buscar contato pelo telefone ${phone} no Bling:`, e);
+      return null;
+    }
+  }
+
+  // Busca todos os pedidos de venda de um contato específico
+  async getOrdersByContactId(contactId: string) {
+    const token = await this.getValidToken();
+    if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
+
+    try {
+      const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas?idContato=${contactId}&limite=100`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await res.json();
+      return result?.data || [];
+    } catch (e) {
+      console.error(`Erro ao buscar pedidos do contato ${contactId} no Bling:`, e);
+      return [];
+    }
+  }
+
   // Busca o estoque de uma lista de produtos
   async fetchProductStock(productIds: string[]) {
     if (productIds.length === 0) return {};

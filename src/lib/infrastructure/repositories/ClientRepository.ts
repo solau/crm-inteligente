@@ -38,7 +38,7 @@ export class ClientRepository {
         .from('clients')
         .update(clientData)
         .eq('id', existingClient.id)
-        .select('id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
+        .select('id, bling_id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
         .single();
         
       if (error || !data) throw new Error(`Erro ao atualizar cliente: ${error?.message}`);
@@ -48,7 +48,7 @@ export class ClientRepository {
       const { data, error } = await supabaseAdmin
         .from('clients')
         .insert({ tenant_id: this.tenantId, ...clientData })
-        .select('id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
+        .select('id, bling_id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
         .single();
 
       if (error || !data) throw new Error(`Erro ao inserir cliente: ${error?.message}`);
@@ -59,13 +59,28 @@ export class ClientRepository {
   async getClientByPhone(phone: string): Promise<ClientData | null> {
     const { data, error } = await supabaseAdmin
       .from('clients')
-      .select('id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
+      .select('id, bling_id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
       .eq('phone', phone)
       .eq('tenant_id', this.tenantId)
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = 0 rows returned
       throw new Error(`Erro ao buscar cliente: ${error.message}`);
+    }
+
+    return data as ClientData | null;
+  }
+
+  async getClientById(id: string): Promise<ClientData | null> {
+    const { data, error } = await supabaseAdmin
+      .from('clients')
+      .select('id, bling_id, cashback_balance, lead_score, base_lead_score, name, phone, preferences, total_spent, last_purchase_date')
+      .eq('id', id)
+      .eq('tenant_id', this.tenantId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Erro ao buscar cliente por ID: ${error.message}`);
     }
 
     return data as ClientData | null;

@@ -5,6 +5,7 @@ import { ArrowLeft, User, Phone, BrainCircuit, CreditCard, ShoppingBag, Clock, T
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AiDossier from '@/components/AiDossier';
+import SyncBlingButton from '@/components/SyncBlingButton';
 
 export default async function ClienteDetalhes({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -108,6 +109,9 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
               <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors text-sm font-medium">
                 <Phone size={14} /> {client.phone}
               </a>
+              <div className="mt-3">
+                <SyncBlingButton clientId={client.id} />
+              </div>
             </div>
           </div>
           
