@@ -107,8 +107,9 @@ export class ProcessBlingWebhookUseCase {
       return true;
     }
 
-    // Ignora qualquer outro status que não seja Atendido (9)
-    if (situacaoId !== 9) {
+    // Ignora qualquer outro status que não seja Válido para Cashback:
+    // 6 = Em aberto, 9 = Atendido, 15 = Em andamento, 24 = Verificado
+    if (![6, 9, 15, 24].includes(situacaoId)) {
       return true;
     }
 

@@ -48,13 +48,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.log(`Buscando pedidos para o contato ${blingId}...`);
     const orders = await blingProvider.getOrdersByContactId(blingId as string);
     
-    // Filtra os pedidos que estão com situação "Atendido" (código 9 no Bling v3)
+    // Filtra os pedidos que estão com situação "Atendido" (9) ou outras situações de venda ativa (6, 15, 24)
     const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider);
 
     let processedCount = 0;
 
     for (const order of orders) {
-      if (order.situacao && order.situacao.id === 9) {
+      if (order.situacao && [6, 9, 15, 24].includes(order.situacao.id)) {
         const orderId = order.id.toString();
         
         // Verifica se o cashback já foi gerado para esse pedido (evita dupla inserção)
