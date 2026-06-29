@@ -1,6 +1,6 @@
 import { ProcessBlingWebhookUseCase, WebhookPayload } from '../ProcessBlingWebhookUseCase';
 import { GeminiService } from '../../../services/GeminiService';
-import { CashbackRepository } from '../../repositories/CashbackRepository';
+import { CashbackRepository } from '../../../infrastructure/repositories/CashbackRepository';
 
 describe('ProcessBlingWebhookUseCase', () => {
   let useCase: ProcessBlingWebhookUseCase;

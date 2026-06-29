@@ -1,8 +1,8 @@
-import { ClientRepository } from '../infrastructure/repositories/ClientRepository';
-import { KanbanRepository } from '../infrastructure/repositories/KanbanRepository';
-import { CashbackRepository } from '../infrastructure/repositories/CashbackRepository';
-import { GeminiService } from '../services/GeminiService';
-import { BlingProvider } from '../infrastructure/providers/BlingProvider';
+import { ClientRepository } from '../../infrastructure/repositories/ClientRepository';
+import { KanbanRepository } from '../../infrastructure/repositories/KanbanRepository';
+import { CashbackRepository } from '../../infrastructure/repositories/CashbackRepository';
+import { GeminiService } from '../../services/GeminiService';
+import { BlingProvider } from '../../infrastructure/providers/BlingProvider';
 
 export class ProcessBlingWebhookUseCase {
   constructor(

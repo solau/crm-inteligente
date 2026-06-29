@@ -1,6 +1,6 @@
-import { BlingProvider } from '../infrastructure/providers/BlingProvider';
-import { ClientRepository } from '../infrastructure/repositories/ClientRepository';
-import { CashbackRepository } from '../infrastructure/repositories/CashbackRepository';
+import { BlingProvider } from '../../infrastructure/providers/BlingProvider';
+import { ClientRepository } from '../../infrastructure/repositories/ClientRepository';
+import { CashbackRepository } from '../../infrastructure/repositories/CashbackRepository';
 
 export class SyncHistoricalDataUseCase {
   constructor(
