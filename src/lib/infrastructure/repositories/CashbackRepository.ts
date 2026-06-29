@@ -41,6 +41,19 @@ export class CashbackRepository {
   }
 
   /**
+   * Verifica se um pedido já foi processado no ledger de cashback
+   */
+  async checkOrderExists(orderId: string): Promise<boolean> {
+    const { data } = await supabaseAdmin
+      .from('cashback_ledger')
+      .select('id')
+      .eq('order_id', orderId)
+      .limit(1)
+      .single();
+    return !!data;
+  }
+
+  /**
    * Consome o cashback disponível (Regra FIFO)
    * Retorna true se conseguiu consumir todo o valor, false caso o saldo seja insuficiente
    */
