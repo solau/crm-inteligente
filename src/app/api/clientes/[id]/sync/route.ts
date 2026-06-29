@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // 3. Busca todos os pedidos do cliente no Bling
     console.log(`Buscando pedidos para o contato ${blingId}...`);
-    const orders = await blingProvider.getOrdersByContactId(blingId);
+    const orders = await blingProvider.getOrdersByContactId(blingId as string);
     
     // Filtra os pedidos que estão com situação "Atendido" (código 9 no Bling v3)
     const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider);
