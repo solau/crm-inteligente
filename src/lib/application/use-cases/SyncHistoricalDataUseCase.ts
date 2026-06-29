@@ -26,7 +26,7 @@ export class SyncHistoricalDataUseCase {
           cashback_balance: 0,
           lead_score: 0,
           tenant_id: tenantId,
-          last_purchase_date: null,
+          last_purchase_date: undefined,
           total_spent: 0,
           base_lead_score: 0
         });

@@ -247,7 +247,7 @@ export class BlingProvider {
       const top10 = [...orders].sort((a: any, b: any) => new Date(b.data).getTime() - new Date(a.data).getTime()).slice(0, 10);
       
       // Busca os itens detalhados apenas desses 10
-      const detailedTop10 = [];
+      const detailedTop10: any[] = [];
       for (const pedido of top10) {
         try {
           await sleep(400); // Respeita rate limit de 3/seg
