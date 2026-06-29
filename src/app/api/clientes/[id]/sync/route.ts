@@ -6,9 +6,9 @@ import { GeminiService } from '@/lib/services/GeminiService';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 import { ProcessBlingWebhookUseCase } from '@/lib/application/use-cases/ProcessBlingWebhookUseCase';
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const clientId = params.id;
+    const clientId = (await params).id;
     const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38'; // Tenant Hardcoded para o MVP
 
     const clientRepository = new ClientRepository(tenantId);
