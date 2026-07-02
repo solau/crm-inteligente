@@ -235,14 +235,11 @@ export class BlingProvider {
     const token = await this.getValidToken();
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
     
-    const bling = new Bling(token);
-
     console.log(`[BlingProvider] Buscando histórico de pedidos para Contato: ${blingId}`);
     try {
-      const response = await bling.pedidosVendas.get({ idContato: Number(blingId), limite: 100 });
-      if (!response.data) return [];
+      const orders = await this.getOrdersByContactId(blingId);
+      if (orders.length === 0) return [];
       
-      const orders = response.data;
       // Pega os 10 pedidos mais recentes
       const top10 = [...orders].sort((a: any, b: any) => new Date(b.data).getTime() - new Date(a.data).getTime()).slice(0, 10);
       
@@ -324,16 +321,35 @@ export class BlingProvider {
     const token = await this.getValidToken();
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
 
-    try {
-      const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas?idContato=${contactId}&limite=100`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const result = await res.json();
-      return result?.data || [];
-    } catch (e) {
-      console.error(`Erro ao buscar pedidos do contato ${contactId} no Bling:`, e);
-      return [];
+    let allOrders: any[] = [];
+    let page = 1;
+    let fetching = true;
+
+    while (fetching) {
+      try {
+        const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas?idContato=${contactId}&pagina=${page}&limite=100`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await res.json();
+        const orders = result?.data || [];
+        
+        if (orders.length === 0) {
+          fetching = false;
+        } else {
+          allOrders.push(...orders);
+          page++;
+          if (orders.length < 100) {
+            fetching = false;
+          } else {
+            await sleep(400); // rate limit
+          }
+        }
+      } catch (e) {
+        console.error(`Erro ao buscar pedidos do contato ${contactId} na página ${page}:`, e);
+        fetching = false;
+      }
     }
+    return allOrders;
   }
 
   // Busca o estoque de uma lista de produtos
