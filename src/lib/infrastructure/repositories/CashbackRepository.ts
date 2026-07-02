@@ -11,6 +11,8 @@ export interface CashbackLedgerEntry {
   created_at?: string;
   active_at?: string;
   expires_at?: string;
+  used_on_order_id?: string;
+  used_at?: string;
 }
 
 export class CashbackRepository {
@@ -84,19 +86,11 @@ export class CashbackRepository {
           .from('cashback_ledger')
           .update({
             remaining_amount: 0,
-            status: 'UTILIZADO'
+            status: 'UTILIZADO',
+            used_on_order_id: orderId,
+            used_at: new Date().toISOString()
           })
           .eq('id', cashback.id);
-        
-        await supabaseAdmin
-          .from('cashback_usage_history')
-          .insert({
-            tenant_id: tenantId,
-            client_id: clientId,
-            cashback_ledger_id: cashback.id,
-            used_on_order_id: orderId,
-            amount_used: availableInThisEntry
-          });
         
         remainingToConsume -= availableInThisEntry;
       } else {
@@ -105,19 +99,11 @@ export class CashbackRepository {
         await supabaseAdmin
           .from('cashback_ledger')
           .update({
-            remaining_amount: newRemaining
+            remaining_amount: newRemaining,
+            used_on_order_id: orderId,
+            used_at: new Date().toISOString()
           })
           .eq('id', cashback.id);
-        
-        await supabaseAdmin
-          .from('cashback_usage_history')
-          .insert({
-            tenant_id: tenantId,
-            client_id: clientId,
-            cashback_ledger_id: cashback.id,
-            used_on_order_id: orderId,
-            amount_used: remainingToConsume
-          });
         
         remainingToConsume = 0;
       }
