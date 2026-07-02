@@ -141,7 +141,7 @@ export class ProcessBlingWebhookUseCase {
 
     // Consome saldo FIFO do Ledger se houve desconto
     if (descontoParaAbater > 0) {
-      await this.cashbackRepository.consumeCashbackFIFO(tenantId, cliente.id!, descontoParaAbater);
+      await this.cashbackRepository.consumeCashbackFIFO(tenantId, cliente.id!, descontoParaAbater, orderId);
     }
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)

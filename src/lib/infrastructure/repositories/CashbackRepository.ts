@@ -57,7 +57,7 @@ export class CashbackRepository {
    * Consome o cashback disponível (Regra FIFO)
    * Retorna true se conseguiu consumir todo o valor, false caso o saldo seja insuficiente
    */
-  async consumeCashbackFIFO(tenantId: string, clientId: string, amountToConsume: number): Promise<boolean> {
+  async consumeCashbackFIFO(tenantId: string, clientId: string, amountToConsume: number, orderId: string): Promise<boolean> {
     if (amountToConsume <= 0) return true;
 
     // Busca cashbacks ATIVOS, ordenados pelo vencimento mais próximo (FIFO)
@@ -88,6 +88,16 @@ export class CashbackRepository {
           })
           .eq('id', cashback.id);
         
+        await supabaseAdmin
+          .from('cashback_usage_history')
+          .insert({
+            tenant_id: tenantId,
+            client_id: clientId,
+            cashback_ledger_id: cashback.id,
+            used_on_order_id: orderId,
+            amount_used: availableInThisEntry
+          });
+        
         remainingToConsume -= availableInThisEntry;
       } else {
         // Consome parcialmente este registro
@@ -98,6 +108,16 @@ export class CashbackRepository {
             remaining_amount: newRemaining
           })
           .eq('id', cashback.id);
+        
+        await supabaseAdmin
+          .from('cashback_usage_history')
+          .insert({
+            tenant_id: tenantId,
+            client_id: clientId,
+            cashback_ledger_id: cashback.id,
+            used_on_order_id: orderId,
+            amount_used: remainingToConsume
+          });
         
         remainingToConsume = 0;
       }
