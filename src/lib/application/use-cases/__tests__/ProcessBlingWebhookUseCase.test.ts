@@ -1,6 +1,5 @@
-import { ProcessBlingWebhookUseCase, WebhookPayload } from '../ProcessBlingWebhookUseCase';
+import { ProcessBlingWebhookUseCase } from '../ProcessBlingWebhookUseCase';
 import { GeminiService } from '../../../services/GeminiService';
-import { CashbackRepository } from '../../../infrastructure/repositories/CashbackRepository';
 
 describe('ProcessBlingWebhookUseCase', () => {
   let useCase: ProcessBlingWebhookUseCase;
@@ -8,6 +7,7 @@ describe('ProcessBlingWebhookUseCase', () => {
   let mockKanbanRepo: any;
   let mockCashbackRepo: any;
   let mockGeminiService: jest.Mocked<GeminiService>;
+  let mockBlingProvider: any;
 
   beforeEach(() => {
     mockClientRepo = {
@@ -32,11 +32,25 @@ describe('ProcessBlingWebhookUseCase', () => {
       analyzePreferences: jest.fn().mockResolvedValue('Mock Preferências'),
     } as any;
 
+    mockBlingProvider = {
+      getOrderById: jest.fn().mockResolvedValue({
+        id: 'order-123',
+        numero: '123',
+        total: 100,
+        situacao: { id: 9 },
+        contato: { id: 456 }
+      }),
+      getContactById: jest.fn().mockResolvedValue({
+        celular: '71991881690'
+      })
+    } as any;
+
     useCase = new ProcessBlingWebhookUseCase(
       mockClientRepo, 
       mockKanbanRepo, 
       mockGeminiService,
-      mockCashbackRepo
+      mockCashbackRepo,
+      mockBlingProvider
     );
   });
 
@@ -45,13 +59,19 @@ describe('ProcessBlingWebhookUseCase', () => {
     mockClientRepo.getClientByPhone.mockResolvedValue(clienteExistente);
     mockCashbackRepo.getActiveBalance.mockResolvedValue(50); // Simula o saldo após consumir
 
-    const payload: WebhookPayload = {
-      tipo: 'pedido.faturado',
-      pedido: {
-        cliente: { nome: 'Jorge', fone: '11999999999' },
-        total: 500,
-        desconto: 50, // 10% de desconto
-      },
+    mockBlingProvider.getOrderById.mockResolvedValue({
+      id: 'order-123',
+      numero: '123',
+      total: 450, // 500 total - 50 desconto
+      totalProdutos: 500,
+      transporte: { frete: 0 },
+      outrasDespesas: 0,
+      situacao: { id: 9 },
+      contato: { id: 456 }
+    });
+
+    const payload: any = {
+      data: { id: 'order-123' }
     };
 
     await useCase.execute(payload);
@@ -59,26 +79,33 @@ describe('ProcessBlingWebhookUseCase', () => {
     expect(mockCashbackRepo.consumeCashbackFIFO).toHaveBeenCalledWith(
       'd948b6cc-cc2c-4399-8525-02f17f281d38', 
       'client-1', 
-      50
+      50,
+      'order-123'
     );
-    expect(mockClientRepo.updateClient).toHaveBeenCalledWith('client-1', {
+    expect(mockClientRepo.updateClient).toHaveBeenCalledWith('client-1', expect.objectContaining({
       cashback_balance: 50,
-      lead_score: 60,
-    });
+      lead_score: expect.any(Number),
+      total_spent: 450
+    }));
   });
 
   it('deve gerar alerta de CAPPING_VIOLATION se o desconto for maior que 20% do pedido', async () => {
     const clienteExistente = { id: 'client-10', cashback_balance: 0, lead_score: 10 };
     mockClientRepo.getClientByPhone.mockResolvedValue(clienteExistente);
 
-    const payload: WebhookPayload = {
-      tipo: 'pedido.faturado',
-      pedido: {
-        numero: '1234',
-        cliente: { nome: 'João', fone: '11911111111' },
-        total: 1000,
-        desconto: 250, // 25% de desconto
-      },
+    mockBlingProvider.getOrderById.mockResolvedValue({
+      id: 'order-1234',
+      numero: '1234',
+      total: 750, // 1000 - 250 desconto (25%)
+      totalProdutos: 1000,
+      transporte: { frete: 0 },
+      outrasDespesas: 0,
+      situacao: { id: 9 },
+      contato: { id: 456 }
+    });
+
+    const payload: any = {
+      data: { id: 'order-1234' }
     };
 
     await useCase.execute(payload);
@@ -86,9 +113,9 @@ describe('ProcessBlingWebhookUseCase', () => {
     expect(mockCashbackRepo.createAlert).toHaveBeenCalledWith(
       'd948b6cc-cc2c-4399-8525-02f17f281d38',
       'client-10',
-      '1234',
+      'order-1234',
       'CAPPING_VIOLATION',
-      'Desconto de R$ 250 excedeu o limite de 20% (R$ 200)'
+      'Desconto de R$ 250 excedeu o limite de 20% (R$ 150)'
     );
 
     expect(mockKanbanRepo.getOrCreateColumn).toHaveBeenCalledWith('🚨 Alertas Gerenciais', 1);
@@ -99,13 +126,19 @@ describe('ProcessBlingWebhookUseCase', () => {
     mockClientRepo.getClientByPhone.mockResolvedValue(clienteExistente);
     mockCashbackRepo.getActiveBalance.mockResolvedValue(200);
 
-    const payload: WebhookPayload = {
-      tipo: 'pedido.faturado',
-      pedido: {
-        cliente: { nome: 'Maria', fone: '11988888888' },
-        total: 1000,
-        desconto: 0,
-      },
+    mockBlingProvider.getOrderById.mockResolvedValue({
+      id: 'order-123',
+      numero: '123',
+      total: 1000,
+      totalProdutos: 1000,
+      transporte: { frete: 0 },
+      outrasDespesas: 0,
+      situacao: { id: 9 },
+      contato: { id: 456 }
+    });
+
+    const payload: any = {
+      data: { id: 'order-123' }
     };
 
     await useCase.execute(payload);
