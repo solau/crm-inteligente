@@ -296,6 +296,23 @@ export class BlingProvider {
     }
   }
 
+  // Busca um contato na API v3 pelo ID
+  async getContactById(contactId: string) {
+    const token = await this.getValidToken();
+    if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
+    
+    try {
+      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos/${contactId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await res.json();
+      return result?.data || null;
+    } catch (e) {
+      console.error(`Erro ao buscar contato pelo ID ${contactId} no Bling:`, e);
+      return null;
+    }
+  }
+
   // Busca um contato na API v3 pelo telefone
   async getContactByPhone(phone: string) {
     const token = await this.getValidToken();

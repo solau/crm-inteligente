@@ -43,7 +43,7 @@ export class SyncHistoricalDataUseCase {
 
       // Consome FIFO se houve desconto
       if (desconto > 0) {
-        await this.cashbackRepository.consumeCashbackFIFO(tenantId, cliente.id!, desconto);
+        await this.cashbackRepository.consumeCashbackFIFO(tenantId, cliente.id!, desconto, order.order_id);
       }
 
       // Gera o novo Cashback

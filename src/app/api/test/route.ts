@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 
 export async function GET() {
-  await supabaseAdmin.from('deals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  await supabaseAdmin.from('cashback_ledger').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  const { error } = await supabaseAdmin.from('clients').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  if (error) return NextResponse.json({ error: error.message });
-  return NextResponse.json({ message: 'Limpeza concluída com sucesso!' });
+  const bling = new BlingProvider('d948b6cc-cc2c-4399-8525-02f17f281d38');
+  try {
+    const order = await bling.getOrderById('13919');
+    return NextResponse.json({ order });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) });
+  }
 }

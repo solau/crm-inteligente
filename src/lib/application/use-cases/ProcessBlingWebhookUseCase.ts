@@ -29,7 +29,19 @@ export class ProcessBlingWebhookUseCase {
     }
 
     const nomeCliente = fullOrder.contato?.nome || payload?.pedido?.cliente?.nome || 'Cliente Alpha';
-    const foneClienteReal = fullOrder.contato?.celular || fullOrder.contato?.telefone || payload?.pedido?.cliente?.fone;
+    let foneClienteReal = fullOrder.contato?.celular || fullOrder.contato?.telefone || payload?.pedido?.cliente?.fone;
+
+    if (!foneClienteReal && fullOrder.contato?.id) {
+      console.log(`Telefone não encontrado no pedido. Buscando cadastro do contato ${fullOrder.contato.id} no Bling...`);
+      const contatoBling = await this.blingProvider.getContactById(fullOrder.contato.id.toString());
+      if (contatoBling) {
+        foneClienteReal = contatoBling.celular || contatoBling.telefone;
+      }
+    }
+
+    if (foneClienteReal) {
+      foneClienteReal = foneClienteReal.replace(/\D/g, '');
+    }
     
     const isSemTelefone = !foneClienteReal;
     const isConsumidorFinal = nomeCliente.toLowerCase().includes('consumidor final');
@@ -88,6 +100,7 @@ export class ProcessBlingWebhookUseCase {
       cliente = await this.clientRepository.upsertClientByPhone({
         name: nomeCliente,
         phone: foneClienteReal!,
+        bling_id: fullOrder.contato?.id?.toString() || payload?.pedido?.cliente?.id?.toString(),
         cashback_balance: 0,
         lead_score: 0,
         tenant_id: tenantId,
@@ -97,7 +110,7 @@ export class ProcessBlingWebhookUseCase {
       });
     }
 
-    const situacaoId = payload?.pedido?.situacao?.id || 0;
+    const situacaoId = Number(fullOrder.situacao?.id) || Number(payload?.pedido?.situacao?.id) || 0;
 
     // Regra de Cancelamento: Revoga o cashback gerado
     if (situacaoId === 12) {

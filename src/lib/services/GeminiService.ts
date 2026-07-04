@@ -74,7 +74,7 @@ export class GeminiService {
       - Últimas compras reais dele e SALDO EM ESTOQUE ATUAL: ${listaProdutos || 'Nenhuma compra registrada'}
 
       REGRAS CRÍTICAS DE NEGÓCIO:
-      1. Liste explicitamente, de forma natural no texto, os 4 produtos que o cliente mais comprou e que possuam estoque maior que zero (Estoque > 0).
+      1. Liste de forma natural no texto os produtos que o cliente mais comprou e que possuam estoque maior que zero (Estoque > 0). Se o cliente tiver bastante histórico de compras, liste sempre no mínimo 5 produtos.
       2. NUNCA invente produtos que não estão na lista de compras reais acima.
       3. Baseie as suas dicas de re-compra ESTRITAMENTE nos produtos que ele já costuma comprar que possuem estoque.
       4. SE O ESTOQUE DO PRODUTO FOR ZERO (0), É PROIBIDO SUgeri-lo! Você deve recomendar uma alternativa similar premium ou focar no relacionamento institucional.
