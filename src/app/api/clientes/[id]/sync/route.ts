@@ -5,6 +5,7 @@ import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRe
 import { GeminiService } from '@/lib/services/GeminiService';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 import { ProcessBlingWebhookUseCase } from '@/lib/application/use-cases/ProcessBlingWebhookUseCase';
+import { InteractionRepository } from '@/lib/infrastructure/repositories/InteractionRepository';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,6 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const cashbackRepository = new CashbackRepository();
     const geminiService = new GeminiService(tenantId);
     const blingProvider = new BlingProvider(tenantId);
+    const interactionRepository = new InteractionRepository();
 
     // 1. Busca o cliente no nosso banco de dados
     const client = await clientRepository.getClientById(clientId);
@@ -49,7 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const orders = await blingProvider.getOrdersByContactId(blingId as string);
     
     // Filtra os pedidos que estão com situação "Atendido" (9) ou outras situações de venda ativa (6, 15, 24)
-    const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider);
+    const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider, interactionRepository);
 
     let processedCount = 0;
 
