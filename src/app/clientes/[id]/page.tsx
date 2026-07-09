@@ -8,10 +8,12 @@ import AiDossier from '@/components/AiDossier';
 import SyncBlingButton from '@/components/SyncBlingButton';
 import CashbackLedgerTable from '@/components/CashbackLedgerTable';
 import OrderHistoryTable from '@/components/OrderHistoryTable';
+import { getSession } from '@/lib/auth';
 
 export default async function ClienteDetalhes({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
+  const session = await getSession();
   
   // 1. Busca os dados do Cliente no Supabase
   const { data: client, error } = await supabaseAdmin
@@ -61,7 +63,7 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
   
   const saldoAtivo = ledger.filter(l => l.status === 'ATIVO').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
   const saldoPendente = ledger.filter(l => l.status === 'PENDENTE').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
-  const saldoExpirado = ledger.filter(l => l.status === 'EXPIRADO').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
+  const saldoExpirado = ledger.filter(l => l.status === 'EXPIRADO' && l.expires_at && l.expires_at >= '2026-07-09').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
 
   const whatsappUrl = `https://wa.me/55${client.phone.replace(/\D/g, '')}?text=Olá%20${encodeURIComponent(client.name.split(' ')[0])},%20tudo%20bem?`;
 
@@ -121,37 +123,39 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
         <div className="lg:col-span-1 space-y-6">
           
           {/* CARDS: Resumo Financeiro */}
-          <div className="grid grid-cols-1 gap-4">
-            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
-                <TrendingUp size={48} />
+          {session?.role === 'ADMIN' && (
+            <div className="grid grid-cols-1 gap-4">
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
+                  <TrendingUp size={48} />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">LTV Total</p>
+                <h3 className="text-lg font-bold text-foreground mt-1">
+                  R$ {ltv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </h3>
               </div>
-              <p className="text-xs font-medium text-muted-foreground">LTV Total</p>
-              <h3 className="text-lg font-bold text-foreground mt-1">
-                R$ {ltv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </h3>
-            </div>
 
-            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
-                <CreditCard size={48} />
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
+                  <CreditCard size={48} />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">Ticket Médio</p>
+                <h3 className="text-lg font-bold text-foreground mt-1">
+                  R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </h3>
               </div>
-              <p className="text-xs font-medium text-muted-foreground">Ticket Médio</p>
-              <h3 className="text-lg font-bold text-foreground mt-1">
-                R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </h3>
-            </div>
 
-            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
-                <Clock size={48} />
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-10 text-primary">
+                  <Clock size={48} />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">Freq. Média</p>
+                <h3 className="text-lg font-bold text-foreground mt-1">
+                  {intervaloMedioDias > 0 ? `${intervaloMedioDias} dias` : 'Única Compra'}
+                </h3>
               </div>
-              <p className="text-xs font-medium text-muted-foreground">Freq. Média</p>
-              <h3 className="text-lg font-bold text-foreground mt-1">
-                {intervaloMedioDias > 0 ? `${intervaloMedioDias} dias` : 'Única Compra'}
-              </h3>
             </div>
-          </div>
+          )}
 
           {/* CARDS: Status Cashback */}
           <div className="grid grid-cols-1 gap-4">

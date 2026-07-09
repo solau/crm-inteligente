@@ -5,6 +5,7 @@ import { KanbanRepository } from '@/lib/infrastructure/repositories/KanbanReposi
 import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRepository';
 import { GeminiService } from '@/lib/services/GeminiService';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
+import { InteractionRepository } from '@/lib/infrastructure/repositories/InteractionRepository';
 
 // Rota POST que o Bling chama quando um evento acontece (Ex: Pedido Faturado)
 export async function POST(request: Request) {
@@ -20,9 +21,10 @@ export async function POST(request: Request) {
     const cashbackRepository = new CashbackRepository();
     const geminiService = new GeminiService(tenantId);
     const blingProvider = new BlingProvider(tenantId);
+    const interactionRepository = new InteractionRepository();
     
     // Processa a regra de negócios (Cashback, Score, Kanban)
-    const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider);
+    const useCase = new ProcessBlingWebhookUseCase(clientRepository, kanbanRepository, geminiService, cashbackRepository, blingProvider, interactionRepository);
     await useCase.execute(payload);
 
     return NextResponse.json({ success: true, message: 'Webhook processado' });

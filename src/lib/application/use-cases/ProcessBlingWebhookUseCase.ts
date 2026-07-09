@@ -3,6 +3,7 @@ import { KanbanRepository } from '../../infrastructure/repositories/KanbanReposi
 import { CashbackRepository } from '../../infrastructure/repositories/CashbackRepository';
 import { GeminiService } from '../../services/GeminiService';
 import { BlingProvider } from '../../infrastructure/providers/BlingProvider';
+import { InteractionRepository } from '../../infrastructure/repositories/InteractionRepository';
 
 export class ProcessBlingWebhookUseCase {
   constructor(
@@ -10,7 +11,8 @@ export class ProcessBlingWebhookUseCase {
     private kanbanRepository: KanbanRepository,
     private geminiService: GeminiService,
     private cashbackRepository: CashbackRepository,
-    private blingProvider: BlingProvider
+    private blingProvider: BlingProvider,
+    private interactionRepository: InteractionRepository
   ) {}
 
   async execute(payload: any, tenantId: string = 'd948b6cc-cc2c-4399-8525-02f17f281d38'): Promise<boolean> {
@@ -143,7 +145,7 @@ export class ProcessBlingWebhookUseCase {
       );
 
       // Gera Alerta Visual no Kanban
-      const alertColumnId = await this.kanbanRepository.getOrCreateColumn('🚨 Alertas Gerenciais', 1);
+      const alertColumnId = await this.kanbanRepository.getOrCreateColumn('🚨 Auditoria de Descontos', 1);
       await this.kanbanRepository.createDeal(
         cliente.id!,
         alertColumnId,
@@ -221,6 +223,20 @@ export class ProcessBlingWebhookUseCase {
       'Acompanhamento Pós-Venda (Qualidade)', 
       totalVenda
     );
+
+    // 5. Atribuição de Conversão (Tracking)
+    if (this.interactionRepository) {
+      const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!);
+      // Atribui se a interação ocorreu nos últimos X dias (simplificado para se existir alguma recente)
+      if (lastInteraction) {
+        await this.interactionRepository.attributeSale(
+          tenantId,
+          lastInteraction.id,
+          orderId,
+          totalVenda
+        );
+      }
+    }
 
     return true;
   }

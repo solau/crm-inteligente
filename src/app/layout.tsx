@@ -18,16 +18,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="dark">
-      <body className={`${inter.className} min-h-screen bg-background font-sans antialiased flex selection:bg-primary/30`}>
-        {/* Sidebar fixa */}
+      <body className={`${inter.className} min-h-screen bg-background font-sans antialiased flex flex-col md:flex-row selection:bg-primary/30`}>
+        {/* Navigation (Sidebar Desktop + Bottom Nav Mobile) */}
         <Sidebar />
         
         {/* Conteúdo Principal */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <Header />
-          
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-8 lg:p-12">
-            <div className="mx-auto max-w-7xl">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden pb-16 md:pb-0 h-[100dvh] md:h-screen">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 lg:p-12">
+            <div className="mx-auto max-w-7xl h-full">
               {children}
             </div>
           </main>

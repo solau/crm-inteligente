@@ -13,28 +13,22 @@ export class GeminiService {
     this.genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
   }
 
-  // Busca o contexto do negócio no Supabase (ex: "Boutique de Carnes Alpha Bull...")
+  // Busca o contexto do negócio no Supabase
   private async getTenantContext() {
-    // const { data } = await supabase.from('tenants').select('business_context').eq('id', this.tenantId);
-    return "Alpha Bull: Boutique de carnes nobres. Foco em clientes Classe A, cortes Wagyu e Angus.";
+    return "Sua Empresa de Vendas";
   }
 
   async calculateLeadScore(clientData: any, interactions: any[]) {
     const context = await this.getTenantContext();
-    // 1. Envia os dados + contexto para a API do Gemini
-    // Prompt: "Atuando como IA de vendas da ${context}, analise..."
-    console.log(`Calculating score for tenant ${this.tenantId} using context: ${context}`);
+    console.log(`Calculating score for tenant ${this.tenantId}`);
     return 85; // Mock
   }
 
   async generateRemarketingMessage(clientHistory: any) {
-    // Pede ao Gemini para escrever a mensagem com base no RFM
-    return "Oi! Vimos que você gosta de teclado. Temos uma oferta especial.";
+    return "Oi! Vimos que você gosta dos nossos produtos. Temos uma oferta especial.";
   }
 
   async analyzeKanbanIntent(whatsappMessage: string) {
-    // Verifica se a mensagem indica intenção de mover o Card
-    // (ex: "Me manda a chave PIX" -> Mover para 'Ganho')
     return {
       action: 'MOVE_CARD',
       targetColumn: 'Fechado (Ganho)'
@@ -45,8 +39,6 @@ export class GeminiService {
     if (!this.genAI) {
       return "⚠️ A Chave da API do Google Gemini não foi configurada. Configure no arquivo .env.local para ativar a inteligência.";
     }
-
-    const context = await this.getTenantContext();
     
     // Resumo financeiro do cliente
     const totalGasto = cliente.total_spent || 0;
@@ -65,7 +57,7 @@ export class GeminiService {
     const listaProdutos = ultimosItens.join(' | ');
 
     const prompt = `
-      Você é a Inteligência Artificial de Vendas (Dossiê Tático) da empresa: ${context}.
+      Você é a Inteligência Artificial de Vendas (Dossiê Tático) auxiliando um vendedor.
       
       Você precisa analisar o seguinte cliente:
       - Nome: ${cliente.name}
@@ -75,9 +67,9 @@ export class GeminiService {
 
       REGRAS CRÍTICAS DE NEGÓCIO:
       1. Liste de forma natural no texto os produtos que o cliente mais comprou e que possuam estoque maior que zero (Estoque > 0). Se o cliente tiver bastante histórico de compras, liste sempre no mínimo 5 produtos.
-      2. NUNCA invente produtos que não estão na lista de compras reais acima.
-      3. Baseie as suas dicas de re-compra ESTRITAMENTE nos produtos que ele já costuma comprar que possuem estoque.
-      4. SE O ESTOQUE DO PRODUTO FOR ZERO (0), É PROIBIDO SUgeri-lo! Você deve recomendar uma alternativa similar premium ou focar no relacionamento institucional.
+      2. NUNCA invente produtos que não estão na lista de compras reais acima. É ESTRITAMENTE PROIBIDO "alucinar" produtos, como "cortes de carne", "sorvete belga" ou qualquer item não citado.
+      3. Baseie as suas dicas de re-compra EXCLUSIVAMENTE nos produtos da lista com estoque.
+      4. SE O ESTOQUE DO PRODUTO FOR ZERO (0), É PROIBIDO SUgeri-lo! Nesse caso, apenas foque no relacionamento institucional, sem sugerir falsas alternativas.
       5. Escreva em parágrafo único (máximo de 5 linhas). Nada de listas (bullet points) ou e-mail. É um resumo tático rápido e persuasivo.
 
       Diga ao vendedor que tom ele deve usar (Ex: 'Cliente Premium, trate-o com exclusividade' ou 'Cliente esfriando, ofereça algo novo').
@@ -100,11 +92,10 @@ export class GeminiService {
       return historicoAntigo || "";
     }
 
-    const context = await this.getTenantContext();
     const listaProdutos = novosProdutos.map(p => `${p.quantidade}x ${p.descricao}`).join(', ');
     
     const prompt = `
-      Atuando como IA de vendas especialista de ${context}.
+      Atuando como IA de vendas especialista.
       Um cliente acabou de comprar: ${listaProdutos}.
       O histórico de preferências atual dele é: ${historicoAntigo || 'Nenhum histórico ainda'}.
       
