@@ -23,7 +23,7 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
           tenant_id: client.tenant_id,
           client_id: client.id,
           campaign_type: campaignType,
-          user_id: session?.id || 'vendedor-anonimo'
+          user_id: session?.id ? session.id : null
         })
       });
       // Oculta o card instantaneamente
