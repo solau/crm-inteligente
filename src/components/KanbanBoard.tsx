@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { KanbanColumn } from './KanbanColumn';
+import { getKanbanColumns } from '@/lib/utils/kanbanLogic';
 
 interface KanbanBoardProps {
   clients: any[];
@@ -50,109 +51,15 @@ export function KanbanBoard({ clients, session, lastInteractions = {} }: KanbanB
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const colPosVenda = [];
-  const col1d = [];
-  const col5d = [];
-  const col10d = [];
-  const col15d = []; // Nova coluna
-  const col45d = [];
-  const col90d = [];
-
-  for (const c of clients) {
-    if (localContacted.has(c.id)) {
-      continue;
-    }
-
-    const daysToExpire = diffDays(c.next_expire_date);
-    const daysSincePurchase = diffDaysPast(c.last_purchase_date);
-    
-    const lastInt = lastInteractions[c.id];
-    let isCooldown = false;
-
-    // Lógica de Cooldown Baseada na Última Interação
-    if (lastInt) {
-      const intDate = new Date(lastInt.date);
-      intDate.setHours(0,0,0,0);
-      const daysSinceInt = diffDaysPast(lastInt.date) || 0;
-      
-      const camp = lastInt.campaign;
-      
-      if (daysSinceInt === 0) {
-        // Se mandou mensagem HOJE, não mostra em nenhum lugar até virar o dia.
-        isCooldown = true;
-      } else {
-        if (camp === 'CASHBACK_15D') {
-          // Se enviou no 15d, pula o de 10 e só reaparece quando faltar <= 5
-          if (daysToExpire !== null && daysToExpire > 5) {
-            isCooldown = true;
-          }
-        } else if (camp === 'CASHBACK_10D') {
-          // Se enviou no 10d, só reaparece no Expira Hoje (<= 1)
-          if (daysToExpire !== null && daysToExpire > 1) {
-            isCooldown = true;
-          }
-        } else if (camp === 'CASHBACK_5D') {
-          // Se enviou no 5d, só reaparece no Expira Hoje (<= 1)
-          if (daysToExpire !== null && daysToExpire > 1) {
-            isCooldown = true;
-          }
-        } else if (camp === 'AUSENTE_45D' || camp === 'OFERTA_90D') {
-          // Se enviou pra ausente e não comprou, só reaparece daqui 15 dias
-          if (daysSinceInt <= 15) {
-            isCooldown = true;
-          }
-        }
-      }
-    }
-
-    if (isCooldown) continue;
-
-    // Prioridade 1: Cashback (Mais Urgente que o Pós-Venda)
-    let assigned = false;
-    if (c.has_active && daysToExpire !== null) {
-      if (daysToExpire <= 1) {
-        col1d.push(c);
-        assigned = true;
-      } else if (daysToExpire > 1 && daysToExpire <= 5) {
-        col5d.push(c);
-        assigned = true;
-      } else if (daysToExpire > 5 && daysToExpire <= 10) {
-        col10d.push(c);
-        assigned = true;
-      } else if (daysToExpire > 10 && daysToExpire <= 15) {
-        col15d.push(c);
-        assigned = true;
-      }
-    }
-
-    if (assigned) continue;
-
-    // Prioridade 2: Pós Venda
-    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
-      colPosVenda.push(c);
-      continue;
-    }
-
-    // Prioridade 3: Ausências (> 45d e > 90d)
-    if (daysSincePurchase !== null) {
-      if (daysSincePurchase > 45 && daysSincePurchase <= 90) {
-        col45d.push(c);
-        continue;
-      } else if (daysSincePurchase > 90) {
-        col90d.push(c);
-        continue;
-      }
-    }
-  }
-
-  // Ordenações
-  col1d.sort((a, b) => new Date(a.next_expire_date).getTime() - new Date(b.next_expire_date).getTime());
-  col5d.sort((a, b) => new Date(a.next_expire_date).getTime() - new Date(b.next_expire_date).getTime());
-  col10d.sort((a, b) => new Date(a.next_expire_date).getTime() - new Date(b.next_expire_date).getTime());
-  col15d.sort((a, b) => new Date(a.next_expire_date).getTime() - new Date(b.next_expire_date).getTime());
-  
-  col45d.sort((a, b) => new Date(b.last_purchase_date).getTime() - new Date(a.last_purchase_date).getTime());
-  col90d.sort((a, b) => new Date(a.last_purchase_date).getTime() - new Date(b.last_purchase_date).getTime());
+  const {
+    colPosVenda,
+    col1d,
+    col5d,
+    col10d,
+    col15d,
+    col45d,
+    col90d
+  } = getKanbanColumns(clients, lastInteractions, localContacted, today);
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-6 pt-2 custom-scrollbar snap-x snap-mandatory">

@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { BrainCircuit, DollarSign, MessageSquare, Target } from 'lucide-react';
+import { Target, BrainCircuit, DollarSign, MessageSquare } from 'lucide-react';
 import RoiAIAnalyzer from './RoiAIAnalyzer'; // Client component
+import { calculateRoiStats } from '@/lib/utils/roiLogic';
 
 export const revalidate = 0;
 
@@ -37,65 +38,14 @@ export default async function RoiReportPage() {
     console.error('Erro ao buscar dados de ROI', error);
   }
 
-  // Agrupa os dados
-  let totalMessages = 0;
-  let totalSales = 0;
-  let totalRevenue = 0;
-
-  const campaignStats: Record<string, any> = {};
-  const sellerStats: Record<string, any> = {};
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-
-  if (interactions) {
-    interactions.forEach(int => {
-      totalMessages++;
-      const hasSale = int.sales_attribution && int.sales_attribution.length > 0;
-      const revenue = hasSale ? int.sales_attribution.reduce((acc: number, cur: any) => acc + Number(cur.revenue), 0) : 0;
-      
-      if (hasSale) totalSales++;
-      totalRevenue += revenue;
-
-      // Por Campanha
-      if (!campaignStats[int.campaign_type]) {
-        campaignStats[int.campaign_type] = { msgs: 0, sales: 0, revenue: 0 };
-      }
-      campaignStats[int.campaign_type].msgs++;
-      if (hasSale) campaignStats[int.campaign_type].sales++;
-      campaignStats[int.campaign_type].revenue += revenue;
-
-      // Por Vendedor com lógica de tempo
-      const seller = int.user_id || 'vendedor-anonimo';
-      if (!sellerStats[seller]) {
-        sellerStats[seller] = { msgsToday: 0, msgsWeek: 0, msgsMonth: 0, msgs: 0, sales: 0, revenue: 0 };
-      }
-
-      const intDateStr = int.created_at.split('T')[0];
-      const intDate = new Date(int.created_at);
-
-      if (intDateStr === todayStr) {
-        sellerStats[seller].msgsToday++;
-      }
-      if (intDate >= sevenDaysAgo) {
-        sellerStats[seller].msgsWeek++;
-      }
-      if (intDate.getMonth() === currentMonth && intDate.getFullYear() === currentYear) {
-        sellerStats[seller].msgsMonth++;
-      }
-
-      sellerStats[seller].msgs++;
-      if (hasSale) sellerStats[seller].sales++;
-      sellerStats[seller].revenue += revenue;
-    });
-  }
-
-  const conversionRate = totalMessages > 0 ? ((totalSales / totalMessages) * 100).toFixed(1) : '0.0';
+  const {
+    totalMessages,
+    totalSales,
+    totalRevenue,
+    conversionRate,
+    campaignStats,
+    sellerStats
+  } = calculateRoiStats(interactions || []);
 
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
