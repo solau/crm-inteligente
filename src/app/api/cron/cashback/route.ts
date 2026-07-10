@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRepository';
 import { ClientRepository } from '@/lib/infrastructure/repositories/ClientRepository';
 
+export const maxDuration = 60; // Permite até 60s de execução na Vercel (Hobby/Pro)
+
 // Rota protegida por secret para ser chamada pela Vercel Cron
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -21,7 +23,7 @@ export async function GET(request: Request) {
     const clientRepo = new ClientRepository(tenantId);
     const affectedClients = new Set<string>();
 
-    // 1. Ativa cashbacks PENDENTES que passaram da carência (7 dias)
+    // 1. Ativa cashbacks PENDENTES que passaram da carência (7 dias/24h)
     const { data: activated, error: errAtv } = await supabaseAdmin
       .from('cashback_ledger')
       .update({ status: 'ATIVO' })
@@ -57,31 +59,42 @@ export async function GET(request: Request) {
     if (errClients) throw errClients;
 
     if (allClients) {
-      for (const client of allClients) {
-        // Recalcula Saldo de Cashback Ativo
-        const novoSaldo = await cashbackRepo.getActiveBalance(tenantId, client.id);
+      // Processa os clientes em lotes paralelos seguros (evita timeout da Vercel)
+      const chunkSize = 10;
+      for (let i = 0; i < allClients.length; i += chunkSize) {
+        const chunk = allClients.slice(i, i + chunkSize);
         
-        // Recalcula Decadência (Decay) do Lead Score
-        let penalty = 0;
-        if (client.last_purchase_date) {
-          const lastPurchase = new Date(client.last_purchase_date);
-          const diffTime = Math.abs(new Date().getTime() - lastPurchase.getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        await Promise.all(chunk.map(async (client) => {
+          // Só recalcula Saldo se ele teve cashbacks afetados agora
+          let novoSaldo: number | undefined;
+          if (affectedClients.has(client.id)) {
+            novoSaldo = await cashbackRepo.getActiveBalance(tenantId, client.id);
+          }
           
-          if (diffDays > 90) penalty = 70;
-          else if (diffDays > 60) penalty = 40;
-          else if (diffDays > 30) penalty = 20;
-        }
+          // Recalcula Decadência (Decay) do Lead Score
+          let penalty = 0;
+          if (client.last_purchase_date) {
+            const lastPurchase = new Date(client.last_purchase_date);
+            const diffTime = Math.abs(new Date().getTime() - lastPurchase.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 90) penalty = 70;
+            else if (diffDays > 60) penalty = 40;
+            else if (diffDays > 30) penalty = 20;
+          }
 
-        const baseScore = client.base_lead_score || 0;
-        let novoLeadScore = baseScore - penalty;
-        novoLeadScore = Math.max(0, Math.min(100, novoLeadScore)); // Trava entre 0 e 100
+          const baseScore = client.base_lead_score || 0;
+          let novoLeadScore = baseScore - penalty;
+          novoLeadScore = Math.max(0, Math.min(100, novoLeadScore));
 
-        await clientRepo.updateClient(client.id, { 
-          cashback_balance: novoSaldo,
-          lead_score: novoLeadScore 
-        });
-        updatedCount++;
+          const updateData: any = { lead_score: novoLeadScore };
+          if (novoSaldo !== undefined) {
+            updateData.cashback_balance = novoSaldo;
+          }
+
+          await clientRepo.updateClient(client.id, updateData);
+          updatedCount++;
+        }));
       }
     }
 
