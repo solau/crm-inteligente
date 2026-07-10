@@ -23,7 +23,7 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
           tenant_id: client.tenant_id,
           client_id: client.id,
           campaign_type: campaignType,
-          user_id: session?.id ? session.id : null
+          user_id: session?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(session.id) ? session.id : null
         })
       });
       // Oculta o card instantaneamente
