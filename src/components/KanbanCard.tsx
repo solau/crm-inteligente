@@ -57,7 +57,7 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
       </div>
       
       <div className="flex flex-col gap-1 mb-3">
-        {client.cashback_balance > 0 && (
+        {client.cashback_balance > 0 && client.has_active && (
           <div className="text-xs text-white/70 flex items-center gap-1">
             <CheckCircle className="w-3 h-3 text-emerald-400" />
             Cashback: {formatMoney(client.cashback_balance)}
