@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
 const USERS = [
   { id: 'admin-1', username: 'Jorge', password: '270118', role: 'ADMIN', name: 'Jorge' },
@@ -20,9 +21,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Busca o UUID real do usuário no banco
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .ilike('name', user.name)
+      .limit(1)
+      .single();
+
+    const realUserId = profile?.id || user.id;
+
     // Cria os dados da sessão
     const sessionData = JSON.stringify({
-      id: user.id,
+      id: realUserId,
       username: user.username,
       name: user.name,
       role: user.role
