@@ -2,7 +2,7 @@ export interface InteractionRecord {
   id: string;
   campaign_type: string;
   user_id: string | null;
-  user_profiles?: { name: string } | null;
+  user_profiles?: any;
   created_at: string;
   sales_attribution?: { id: string; revenue: number }[];
 }
@@ -57,7 +57,8 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
     campaignStats[campaignType].revenue += revenue;
 
     // Por Vendedor com lógica de tempo
-    const seller = int.user_profiles?.name || (int.user_id ? `Vendedor ${int.user_id.split('-')[0]}` : 'Vendedor Anônimo');
+    const profile = Array.isArray(int.user_profiles) ? int.user_profiles[0] : int.user_profiles;
+    const seller = profile?.name || (int.user_id ? `Vendedor ${int.user_id.split('-')[0]}` : 'Vendedor Anônimo');
     if (!sellerStats[seller]) {
       sellerStats[seller] = { msgsToday: 0, msgsWeek: 0, msgsMonth: 0, msgs: 0, sales: 0, revenue: 0 };
     }
