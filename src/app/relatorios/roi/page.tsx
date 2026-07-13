@@ -27,6 +27,7 @@ export default async function RoiReportPage() {
       id,
       campaign_type,
       user_id,
+      user_profiles ( name ),
       created_at,
       sales_attribution (
         id,
