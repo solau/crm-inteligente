@@ -36,6 +36,10 @@ export default async function Sidebar() {
 
           {session?.role === 'ADMIN' && (
             <>
+              <Link href="/dashboard/geral" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+                <LayoutDashboard size={20} className="text-muted-foreground" />
+                <span>Visão Geral</span>
+              </Link>
               <Link href="/dashboard/conversao" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <BarChart3 size={20} className="text-muted-foreground" />
                 <span>Conversão</span>
@@ -70,10 +74,16 @@ export default async function Sidebar() {
           <span className="text-[10px] font-medium">Kanban</span>
         </Link>
         {session?.role === 'ADMIN' && (
-          <Link href="/relatorios/roi" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
-            <BarChart3 size={20} />
-            <span className="text-[10px] font-medium">ROI</span>
-          </Link>
+          <>
+            <Link href="/dashboard/geral" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
+              <LayoutDashboard size={20} />
+              <span className="text-[10px] font-medium">Geral</span>
+            </Link>
+            <Link href="/relatorios/roi" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
+              <BarChart3 size={20} />
+              <span className="text-[10px] font-medium">ROI</span>
+            </Link>
+          </>
         )}
         <form action="/api/auth/logout" method="POST" className="flex items-center justify-center">
           <button type="submit" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-destructive transition-colors p-2">
