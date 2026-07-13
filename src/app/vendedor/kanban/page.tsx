@@ -258,11 +258,12 @@ export default async function KanbanPage() {
 
                 {/* CONVERSÃO MÊS */}
                 <div className="border-l border-white/10 pl-6 flex flex-col">
-                  <p className="text-[10px] uppercase tracking-wider text-white/50">Taxa de Conversão</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Conversão (Meta)</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-lg font-black leading-none text-indigo-400">
+                    <span className={`text-lg font-black leading-none ${conv30d >= 6 ? 'text-emerald-500' : 'text-indigo-400'}`}>
                       {conv30d.toFixed(1)}%
                     </span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 6%</span>
                   </div>
                   <div className="mt-1 flex items-center gap-1">
                     <span className={`text-[10px] font-bold ${diffConv30d > 0 ? 'text-emerald-500' : diffConv30d < 0 ? 'text-red-400' : 'text-white/50'}`}>
