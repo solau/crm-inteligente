@@ -10,11 +10,23 @@ export class InteractionRepository {
     );
   }
 
-  async getLatestInteraction(clientId: string) {
-    const { data, error } = await this.supabase
+  async getLatestInteraction(clientId: string, maxDateStr?: string) {
+    let query = this.supabase
       .from('client_interactions')
       .select('*')
-      .eq('client_id', clientId)
+      .eq('client_id', clientId);
+
+    if (maxDateStr) {
+      // Interação deve ter ocorrido antes ou no exato momento da venda
+      query = query.lte('created_at', maxDateStr);
+      
+      // Janela de atribuição: Apenas interações dos últimos 15 dias importam
+      const minDate = new Date(maxDateStr);
+      minDate.setDate(minDate.getDate() - 15);
+      query = query.gte('created_at', minDate.toISOString());
+    }
+
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(1)
       .single();

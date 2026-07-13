@@ -242,8 +242,16 @@ export class ProcessBlingWebhookUseCase {
 
     // 5. Atribuição de Conversão (Tracking)
     if (this.interactionRepository) {
-      const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!);
-      // Atribui se a interação ocorreu nos últimos X dias (simplificado para se existir alguma recente)
+      // Data exata em que o pedido foi criado no Bling, ou a data atual
+      let saleDateStr = now.toISOString();
+      if (fullOrder.data) {
+        // Se a venda tem data (ex: '2026-07-13'), garantimos que a interação foi ANTES ou NO MESMO DIA
+        // Adicionamos '23:59:59' para cobrir o dia inteiro da venda, caso a interação tenha acontecido horas antes da aprovação
+        saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
+      }
+      
+      const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!, saleDateStr);
+      // Atribui se a interação ocorreu nos últimos 15 dias (regra aplicada no repositório)
       if (lastInteraction) {
         await this.interactionRepository.attributeSale(
           tenantId,
