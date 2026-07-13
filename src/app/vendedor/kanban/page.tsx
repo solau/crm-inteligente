@@ -79,11 +79,11 @@ export default async function KanbanPage() {
   let diffMsgs1d = 0;
   
   let msgs7d = 0;
-  let conv7d = 0;
-  let diffConv7d = 0;
+  let diffMsgs7d = 0;
   
   let msgs30d = 0;
   let conv30d = 0;
+  let diffMsgs30d = 0;
   let diffConv30d = 0;
   
   if (session?.id) {
@@ -106,13 +106,13 @@ export default async function KanbanPage() {
       .gte('created_at', thirtyDaysAgo);
 
     if (allInteractions) {
-      type UserStats = { m1: number, m7: number, m30: number, s7: number, s30: number };
+      type UserStats = { m1: number, m7: number, m30: number, s30: number };
       const statsByUser: Record<string, UserStats> = {};
       
       for (const int of allInteractions) {
         if (!int.user_id) continue;
         if (!statsByUser[int.user_id]) {
-          statsByUser[int.user_id] = { m1: 0, m7: 0, m30: 0, s7: 0, s30: 0 };
+          statsByUser[int.user_id] = { m1: 0, m7: 0, m30: 0, s30: 0 };
         }
         
         const isToday = int.created_at >= todayStr;
@@ -126,7 +126,6 @@ export default async function KanbanPage() {
         // 7d
         if (is7d) {
           statsByUser[int.user_id].m7++;
-          if (hasSale) statsByUser[int.user_id].s7++;
         }
         
         // 1d
@@ -135,43 +134,49 @@ export default async function KanbanPage() {
         }
       }
       
-      const myStats = statsByUser[session.id] || { m1: 0, m7: 0, m30: 0, s7: 0, s30: 0 };
+      const myStats = statsByUser[session.id] || { m1: 0, m7: 0, m30: 0, s30: 0 };
       msgs1d = myStats.m1;
       msgs7d = myStats.m7;
       msgs30d = myStats.m30;
-      conv7d = msgs7d > 0 ? (myStats.s7 / msgs7d) * 100 : 0;
       conv30d = msgs30d > 0 ? (myStats.s30 / msgs30d) * 100 : 0;
 
       const otherUsers = Object.keys(statsByUser).filter(id => id !== session.id);
       if (otherUsers.length > 0) {
         // Averages
         let teamM1 = 0;
-        let teamC7 = 0;
+        let teamM7 = 0;
+        let teamM30 = 0;
         let teamC30 = 0;
         
         for (const id of otherUsers) {
           const u = statsByUser[id];
           teamM1 += u.m1;
-          teamC7 += u.m7 > 0 ? (u.s7 / u.m7) * 100 : 0;
+          teamM7 += u.m7;
+          teamM30 += u.m30;
           teamC30 += u.m30 > 0 ? (u.s30 / u.m30) * 100 : 0;
         }
         
         teamM1 /= otherUsers.length;
-        teamC7 /= otherUsers.length;
+        teamM7 /= otherUsers.length;
+        teamM30 /= otherUsers.length;
         teamC30 /= otherUsers.length;
         
         if (teamM1 > 0) diffMsgs1d = ((msgs1d - teamM1) / teamM1) * 100;
         else if (msgs1d > 0) diffMsgs1d = 100;
         
-        if (teamC7 > 0) diffConv7d = ((conv7d - teamC7) / teamC7) * 100;
-        else if (conv7d > 0) diffConv7d = 100;
+        if (teamM7 > 0) diffMsgs7d = ((msgs7d - teamM7) / teamM7) * 100;
+        else if (msgs7d > 0) diffMsgs7d = 100;
+        
+        if (teamM30 > 0) diffMsgs30d = ((msgs30d - teamM30) / teamM30) * 100;
+        else if (msgs30d > 0) diffMsgs30d = 100;
         
         if (teamC30 > 0) diffConv30d = ((conv30d - teamC30) / teamC30) * 100;
         else if (conv30d > 0) diffConv30d = 100;
         
       } else {
         if (msgs1d > 0) diffMsgs1d = 100;
-        if (conv7d > 0) diffConv7d = 100;
+        if (msgs7d > 0) diffMsgs7d = 100;
+        if (msgs30d > 0) diffMsgs30d = 100;
         if (conv30d > 0) diffConv30d = 100;
       }
     }
@@ -199,64 +204,78 @@ export default async function KanbanPage() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-4 pl-1">
+              <div className="flex items-center gap-6 pl-1">
                 {/* HOJE */}
-                <div>
+                <div className="flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">Hoje (Meta)</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className={`text-lg font-black leading-none ${msgs1d >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
                       {msgs1d}
                     </span>
-                    <span className="text-sm font-medium text-white/30 leading-none">/ 30 msgs</span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 30</span>
                   </div>
                   {diffMsgs1d !== 0 && (
                     <div className="mt-1 flex items-center gap-1">
                       <span className={`text-[10px] font-bold ${diffMsgs1d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                         {diffMsgs1d > 0 ? '+' : ''}{diffMsgs1d.toFixed(0)}%
                       </span>
-                      <span className="text-[10px] text-white/30">vs equipe</span>
+                      <span className="text-[10px] text-white/30">vs eq.</span>
                     </div>
                   )}
                 </div>
                 
                 {/* 7 DIAS */}
-                <div className="border-l border-white/10 pl-4">
+                <div className="border-l border-white/10 pl-6 flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">7 Dias</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-lg font-black leading-none text-white/90">
-                      {msgs7d} <span className="text-[10px] text-white/30">msgs</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`text-lg font-black leading-none ${msgs7d >= 210 ? 'text-emerald-500' : 'text-white/90'}`}>
+                      {msgs7d}
                     </span>
-                    <span className="text-lg font-black leading-none text-indigo-400">
-                      {conv7d.toFixed(1)}% <span className="text-[10px] text-white/30">conv</span>
-                    </span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 210</span>
                   </div>
-                  {diffConv7d !== 0 && (
+                  {diffMsgs7d !== 0 && (
                     <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${diffConv7d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffConv7d > 0 ? '+' : ''}{diffConv7d.toFixed(0)}% conv
+                      <span className={`text-[10px] font-bold ${diffMsgs7d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {diffMsgs7d > 0 ? '+' : ''}{diffMsgs7d.toFixed(0)}%
                       </span>
-                      <span className="text-[10px] text-white/30">vs equipe</span>
+                      <span className="text-[10px] text-white/30">vs eq.</span>
                     </div>
                   )}
                 </div>
 
                 {/* 30 DIAS */}
-                <div className="border-l border-white/10 pl-4">
+                <div className="border-l border-white/10 pl-6 flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">30 Dias</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-lg font-black leading-none text-white/90">
-                      {msgs30d} <span className="text-[10px] text-white/30">msgs</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`text-lg font-black leading-none ${msgs30d >= 900 ? 'text-emerald-500' : 'text-white/90'}`}>
+                      {msgs30d}
                     </span>
-                    <span className="text-lg font-black leading-none text-purple-400">
-                      {conv30d.toFixed(1)}% <span className="text-[10px] text-white/30">conv</span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 900</span>
+                  </div>
+                  {diffMsgs30d !== 0 && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <span className={`text-[10px] font-bold ${diffMsgs30d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {diffMsgs30d > 0 ? '+' : ''}{diffMsgs30d.toFixed(0)}%
+                      </span>
+                      <span className="text-[10px] text-white/30">vs eq.</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* CONVERSÃO MÊS */}
+                <div className="border-l border-white/10 pl-6 flex flex-col">
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Taxa de Conversão</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-lg font-black leading-none text-indigo-400">
+                      {conv30d.toFixed(1)}%
                     </span>
                   </div>
                   {diffConv30d !== 0 && (
                     <div className="mt-1 flex items-center gap-1">
                       <span className={`text-[10px] font-bold ${diffConv30d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffConv30d > 0 ? '+' : ''}{diffConv30d.toFixed(0)}% conv
+                        {diffConv30d > 0 ? '+' : ''}{diffConv30d.toFixed(0)}%
                       </span>
-                      <span className="text-[10px] text-white/30">vs equipe</span>
+                      <span className="text-[10px] text-white/30">vs eq.</span>
                     </div>
                   )}
                 </div>
