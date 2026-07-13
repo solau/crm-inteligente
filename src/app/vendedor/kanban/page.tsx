@@ -72,12 +72,61 @@ export default async function KanbanPage() {
     }
   }
 
+  let sellerName = 'Vendedor';
+  let messagesToday = 0;
+  
+  if (session?.id) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('name')
+      .eq('id', session.id)
+      .single();
+      
+    if (profile) sellerName = profile.name;
+    
+    // Contar mensagens de hoje
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { count } = await supabase
+      .from('client_interactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', session.id)
+      .gte('created_at', `${todayStr}T00:00:00.000Z`);
+      
+    messagesToday = count || 0;
+  }
+
   return (
     <div className="min-h-screen bg-black/90 pt-8 px-4 md:px-8 relative">
       <div className="max-w-[1600px] mx-auto pt-4">
-        <div className="mb-6">
-          <h1 className="text-xl md:text-2xl font-bold text-white/90">Kanban Inteligente</h1>
-          <p className="text-white/50 text-xs md:text-sm">Organização automática com base no ciclo de vida e cashback do cliente.</p>
+        <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-white/90">Kanban Inteligente</h1>
+            <p className="text-white/50 text-xs md:text-sm">Organização automática com base no ciclo de vida e cashback do cliente.</p>
+          </div>
+          
+          {/* Header KPI do Vendedor */}
+          {session?.id && (
+            <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-4 py-2">
+              <div className="flex items-center gap-3 border-r border-white/10 pr-4">
+                <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+                  {sellerName.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Atendente</p>
+                  <p className="text-sm font-bold text-white/90 capitalize">{sellerName}</p>
+                </div>
+              </div>
+              <div className="pl-1">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">Sua Meta Diária</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-lg font-black leading-none ${messagesToday >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
+                    {messagesToday}
+                  </span>
+                  <span className="text-sm font-medium text-white/30 leading-none">/ 30 msgs</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Kanban Board Container */}
