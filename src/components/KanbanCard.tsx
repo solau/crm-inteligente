@@ -1,4 +1,6 @@
 'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Phone, CheckCircle, Clock } from 'lucide-react';
 import Link from 'next/link';
 
@@ -13,7 +15,12 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
   const registerInteraction = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
     // Registra a interação no banco (API)
     try {
       await fetch('/api/interactions', {
@@ -26,12 +33,17 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
           user_id: session?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(session.id) ? session.id : null
         })
       });
+      
+      router.refresh(); // Força o Next.js a limpar o cache do router
+      
       // Oculta o card instantaneamente
       if (onMessageSent) {
         onMessageSent(client.id);
       }
     } catch (err) {
       console.error('Erro ao registrar interação', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -74,22 +86,26 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
       <div className="flex justify-between items-center border-t border-white/10 pt-3 mt-1">
         <button 
           onClick={registerInteraction}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-white/50 hover:text-white/90 bg-white/5 hover:bg-white/15 px-2.5 py-1.5 rounded-lg transition-colors"
+          disabled={isLoading}
+          className={`flex items-center gap-1.5 text-[11px] font-medium text-white/50 hover:text-white/90 bg-white/5 hover:bg-white/15 px-2.5 py-1.5 rounded-lg transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
           title="Marcar como contatado sem abrir o WhatsApp"
         >
           <CheckCircle className="w-3.5 h-3.5" />
-          Já Falei
+          {isLoading ? 'Salvando...' : 'Já Falei'}
         </button>
-        <a 
-          href={wppLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => registerInteraction()}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1.5 rounded-lg transition-colors"
+        <button 
+          onClick={() => {
+            if (!isLoading) {
+              window.open(wppLink, '_blank', 'noopener,noreferrer');
+              registerInteraction();
+            }
+          }}
+          disabled={isLoading}
+          className={`flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1.5 rounded-lg transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <Phone className="w-3.5 h-3.5" />
           WhatsApp
-        </a>
+        </button>
       </div>
     </div>
   );
