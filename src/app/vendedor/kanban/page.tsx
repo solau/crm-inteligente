@@ -9,7 +9,12 @@ export default async function KanbanPage() {
   
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      global: {
+        fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
+      }
+    }
   );
 
   // Busca os dados da view que alimenta o radar com paginação para ignorar o limite de 1000 linhas
