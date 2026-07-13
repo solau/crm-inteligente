@@ -214,14 +214,12 @@ export default async function KanbanPage() {
                     </span>
                     <span className="text-xs font-medium text-white/30 leading-none">/ 30</span>
                   </div>
-                  {diffMsgs1d !== 0 && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${diffMsgs1d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffMsgs1d > 0 ? '+' : ''}{diffMsgs1d.toFixed(0)}%
-                      </span>
-                      <span className="text-[10px] text-white/30">vs eq.</span>
-                    </div>
-                  )}
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className={`text-[10px] font-bold ${diffMsgs1d > 0 ? 'text-emerald-500' : diffMsgs1d < 0 ? 'text-red-400' : 'text-white/50'}`}>
+                      {diffMsgs1d > 0 ? '+' : ''}{diffMsgs1d.toFixed(0)}%
+                    </span>
+                    <span className="text-[10px] text-white/30">vs eq.</span>
+                  </div>
                 </div>
                 
                 {/* 7 DIAS */}
@@ -233,14 +231,12 @@ export default async function KanbanPage() {
                     </span>
                     <span className="text-xs font-medium text-white/30 leading-none">/ 210</span>
                   </div>
-                  {diffMsgs7d !== 0 && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${diffMsgs7d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffMsgs7d > 0 ? '+' : ''}{diffMsgs7d.toFixed(0)}%
-                      </span>
-                      <span className="text-[10px] text-white/30">vs eq.</span>
-                    </div>
-                  )}
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className={`text-[10px] font-bold ${diffMsgs7d > 0 ? 'text-emerald-500' : diffMsgs7d < 0 ? 'text-red-400' : 'text-white/50'}`}>
+                      {diffMsgs7d > 0 ? '+' : ''}{diffMsgs7d.toFixed(0)}%
+                    </span>
+                    <span className="text-[10px] text-white/30">vs eq.</span>
+                  </div>
                 </div>
 
                 {/* 30 DIAS */}
@@ -252,14 +248,12 @@ export default async function KanbanPage() {
                     </span>
                     <span className="text-xs font-medium text-white/30 leading-none">/ 900</span>
                   </div>
-                  {diffMsgs30d !== 0 && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${diffMsgs30d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffMsgs30d > 0 ? '+' : ''}{diffMsgs30d.toFixed(0)}%
-                      </span>
-                      <span className="text-[10px] text-white/30">vs eq.</span>
-                    </div>
-                  )}
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className={`text-[10px] font-bold ${diffMsgs30d > 0 ? 'text-emerald-500' : diffMsgs30d < 0 ? 'text-red-400' : 'text-white/50'}`}>
+                      {diffMsgs30d > 0 ? '+' : ''}{diffMsgs30d.toFixed(0)}%
+                    </span>
+                    <span className="text-[10px] text-white/30">vs eq.</span>
+                  </div>
                 </div>
 
                 {/* CONVERSÃO MÊS */}
@@ -270,14 +264,12 @@ export default async function KanbanPage() {
                       {conv30d.toFixed(1)}%
                     </span>
                   </div>
-                  {diffConv30d !== 0 && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${diffConv30d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {diffConv30d > 0 ? '+' : ''}{diffConv30d.toFixed(0)}%
-                      </span>
-                      <span className="text-[10px] text-white/30">vs eq.</span>
-                    </div>
-                  )}
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className={`text-[10px] font-bold ${diffConv30d > 0 ? 'text-emerald-500' : diffConv30d < 0 ? 'text-red-400' : 'text-white/50'}`}>
+                      {diffConv30d > 0 ? '+' : ''}{diffConv30d.toFixed(0)}%
+                    </span>
+                    <span className="text-[10px] text-white/30">vs eq.</span>
+                  </div>
                 </div>
               </div>
             </div>
