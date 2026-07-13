@@ -73,10 +73,18 @@ export default async function KanbanPage() {
   }
 
   let sellerName = 'Vendedor';
-  let messagesToday = 0;
-  let conversionRate = '0.0';
-  let messagesDiff = 0;
-  let convDiff = 0;
+  
+  // Stats
+  let msgs1d = 0;
+  let diffMsgs1d = 0;
+  
+  let msgs7d = 0;
+  let conv7d = 0;
+  let diffConv7d = 0;
+  
+  let msgs30d = 0;
+  let conv30d = 0;
+  let diffConv30d = 0;
   
   if (session?.id) {
     const { data: profile } = await supabase
@@ -87,74 +95,84 @@ export default async function KanbanPage() {
       
     if (profile) sellerName = profile.name;
     
-    // Contar mensagens de hoje (Equipe toda)
-    const todayStr = new Date().toISOString().split('T')[0];
-    const { data: allTodayInteractions } = await supabase
+    // Obter todas as interações dos últimos 30 dias (Equipe toda)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const todayStr = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z';
+    
+    const { data: allInteractions } = await supabase
       .from('client_interactions')
-      .select('user_id')
-      .gte('created_at', `${todayStr}T00:00:00.000Z`);
+      .select('user_id, created_at, sales_attribution(id)')
+      .gte('created_at', thirtyDaysAgo);
 
-    if (allTodayInteractions) {
-      const msgsByUser: Record<string, number> = {};
-      for (const int of allTodayInteractions) {
-        if (int.user_id) {
-          msgsByUser[int.user_id] = (msgsByUser[int.user_id] || 0) + 1;
+    if (allInteractions) {
+      type UserStats = { m1: number, m7: number, m30: number, s7: number, s30: number };
+      const statsByUser: Record<string, UserStats> = {};
+      
+      for (const int of allInteractions) {
+        if (!int.user_id) continue;
+        if (!statsByUser[int.user_id]) {
+          statsByUser[int.user_id] = { m1: 0, m7: 0, m30: 0, s7: 0, s30: 0 };
+        }
+        
+        const isToday = int.created_at >= todayStr;
+        const is7d = int.created_at >= sevenDaysAgo;
+        const hasSale = int.sales_attribution && int.sales_attribution.length > 0;
+        
+        // 30d
+        statsByUser[int.user_id].m30++;
+        if (hasSale) statsByUser[int.user_id].s30++;
+        
+        // 7d
+        if (is7d) {
+          statsByUser[int.user_id].m7++;
+          if (hasSale) statsByUser[int.user_id].s7++;
+        }
+        
+        // 1d
+        if (isToday) {
+          statsByUser[int.user_id].m1++;
         }
       }
       
-      messagesToday = msgsByUser[session.id] || 0;
-
-      const otherUsers = Object.keys(msgsByUser).filter(id => id !== session.id);
-      if (otherUsers.length > 0) {
-        const totalOtherMsgs = otherUsers.reduce((acc, id) => acc + msgsByUser[id], 0);
-        const teamAvgMessagesToday = totalOtherMsgs / otherUsers.length;
-        if (teamAvgMessagesToday > 0) {
-          messagesDiff = ((messagesToday - teamAvgMessagesToday) / teamAvgMessagesToday) * 100;
-        } else if (messagesToday > 0) {
-          messagesDiff = 100;
-        }
-      } else if (messagesToday > 0) {
-        messagesDiff = 100; // se não há ninguém na equipe mas eu enviei
-      }
-    }
-
-    // Obter taxa de conversão do mês (Equipe toda)
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-    const { data: allMonthInteractions } = await supabase
-      .from('client_interactions')
-      .select('user_id, sales_attribution(id)')
-      .gte('created_at', startOfMonth);
-      
-    if (allMonthInteractions) {
-      const statsByUser: Record<string, { msgs: number, sales: number }> = {};
-      for (const int of allMonthInteractions) {
-        if (int.user_id) {
-          if (!statsByUser[int.user_id]) statsByUser[int.user_id] = { msgs: 0, sales: 0 };
-          statsByUser[int.user_id].msgs += 1;
-          if (int.sales_attribution && int.sales_attribution.length > 0) {
-            statsByUser[int.user_id].sales += 1;
-          }
-        }
-      }
-      
-      const myStats = statsByUser[session.id] || { msgs: 0, sales: 0 };
-      const myConvRate = myStats.msgs > 0 ? (myStats.sales / myStats.msgs) * 100 : 0;
-      conversionRate = myConvRate.toFixed(1);
+      const myStats = statsByUser[session.id] || { m1: 0, m7: 0, m30: 0, s7: 0, s30: 0 };
+      msgs1d = myStats.m1;
+      msgs7d = myStats.m7;
+      msgs30d = myStats.m30;
+      conv7d = msgs7d > 0 ? (myStats.s7 / msgs7d) * 100 : 0;
+      conv30d = msgs30d > 0 ? (myStats.s30 / msgs30d) * 100 : 0;
 
       const otherUsers = Object.keys(statsByUser).filter(id => id !== session.id);
       if (otherUsers.length > 0) {
-        const teamConvRates = otherUsers.map(id => {
-          const uStats = statsByUser[id];
-          return uStats.msgs > 0 ? (uStats.sales / uStats.msgs) * 100 : 0;
-        });
-        const teamAvgConv = teamConvRates.reduce((acc, val) => acc + val, 0) / teamConvRates.length;
-        if (teamAvgConv > 0) {
-          convDiff = ((myConvRate - teamAvgConv) / teamAvgConv) * 100;
-        } else if (myConvRate > 0) {
-          convDiff = 100;
+        // Averages
+        let teamM1 = 0;
+        let teamC7 = 0;
+        let teamC30 = 0;
+        
+        for (const id of otherUsers) {
+          const u = statsByUser[id];
+          teamM1 += u.m1;
+          teamC7 += u.m7 > 0 ? (u.s7 / u.m7) * 100 : 0;
+          teamC30 += u.m30 > 0 ? (u.s30 / u.m30) * 100 : 0;
         }
-      } else if (myConvRate > 0) {
-        convDiff = 100;
+        
+        teamM1 /= otherUsers.length;
+        teamC7 /= otherUsers.length;
+        teamC30 /= otherUsers.length;
+        
+        if (teamM1 > 0) diffMsgs1d = ((msgs1d - teamM1) / teamM1) * 100;
+        else if (msgs1d > 0) diffMsgs1d = 100;
+        
+        if (teamC7 > 0) diffConv7d = ((conv7d - teamC7) / teamC7) * 100;
+        else if (conv7d > 0) diffConv7d = 100;
+        
+        if (teamC30 > 0) diffConv30d = ((conv30d - teamC30) / teamC30) * 100;
+        else if (conv30d > 0) diffConv30d = 100;
+        
+      } else {
+        if (msgs1d > 0) diffMsgs1d = 100;
+        if (conv7d > 0) diffConv7d = 100;
+        if (conv30d > 0) diffConv30d = 100;
       }
     }
   }
@@ -162,7 +180,7 @@ export default async function KanbanPage() {
   return (
     <div className="min-h-screen bg-black/90 pt-8 px-4 md:px-8 relative">
       <div className="max-w-[1600px] mx-auto pt-4">
-        <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-white/90">Kanban Inteligente</h1>
             <p className="text-white/50 text-xs md:text-sm">Organização automática com base no ciclo de vida e cashback do cliente.</p>
@@ -170,46 +188,73 @@ export default async function KanbanPage() {
           
           {/* Header KPI do Vendedor */}
           {session?.id && (
-            <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-4 py-2">
+            <div className="flex flex-wrap items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-4 py-2">
               <div className="flex items-center gap-3 border-r border-white/10 pr-4">
                 <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
                   {sellerName.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-white/50">Atendente</p>
-                  <p className="text-sm font-bold text-white/90 capitalize">{sellerName}</p>
+                  <p className="text-sm font-bold text-white/90 capitalize whitespace-nowrap">{sellerName}</p>
                 </div>
               </div>
+              
               <div className="flex items-center gap-4 pl-1">
+                {/* HOJE */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/50">Sua Meta Diária</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Hoje (Meta)</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-lg font-black leading-none ${messagesToday >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
-                      {messagesToday}
+                    <span className={`text-lg font-black leading-none ${msgs1d >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
+                      {msgs1d}
                     </span>
                     <span className="text-sm font-medium text-white/30 leading-none">/ 30 msgs</span>
                   </div>
-                  {messagesDiff !== 0 && (
+                  {diffMsgs1d !== 0 && (
                     <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${messagesDiff > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {messagesDiff > 0 ? '+' : ''}{messagesDiff.toFixed(0)}%
+                      <span className={`text-[10px] font-bold ${diffMsgs1d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {diffMsgs1d > 0 ? '+' : ''}{diffMsgs1d.toFixed(0)}%
                       </span>
                       <span className="text-[10px] text-white/30">vs equipe</span>
                     </div>
                   )}
                 </div>
                 
+                {/* 7 DIAS */}
                 <div className="border-l border-white/10 pl-4">
-                  <p className="text-[10px] uppercase tracking-wider text-white/50">Conversão (Mês)</p>
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">7 Dias</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-lg font-black leading-none text-white/90">
+                      {msgs7d} <span className="text-[10px] text-white/30">msgs</span>
+                    </span>
                     <span className="text-lg font-black leading-none text-indigo-400">
-                      {conversionRate}%
+                      {conv7d.toFixed(1)}% <span className="text-[10px] text-white/30">conv</span>
                     </span>
                   </div>
-                  {convDiff !== 0 && (
+                  {diffConv7d !== 0 && (
                     <div className="mt-1 flex items-center gap-1">
-                      <span className={`text-[10px] font-bold ${convDiff > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                        {convDiff > 0 ? '+' : ''}{convDiff.toFixed(0)}%
+                      <span className={`text-[10px] font-bold ${diffConv7d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {diffConv7d > 0 ? '+' : ''}{diffConv7d.toFixed(0)}% conv
+                      </span>
+                      <span className="text-[10px] text-white/30">vs equipe</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 30 DIAS */}
+                <div className="border-l border-white/10 pl-4">
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">30 Dias</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-lg font-black leading-none text-white/90">
+                      {msgs30d} <span className="text-[10px] text-white/30">msgs</span>
+                    </span>
+                    <span className="text-lg font-black leading-none text-purple-400">
+                      {conv30d.toFixed(1)}% <span className="text-[10px] text-white/30">conv</span>
+                    </span>
+                  </div>
+                  {diffConv30d !== 0 && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <span className={`text-[10px] font-bold ${diffConv30d > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {diffConv30d > 0 ? '+' : ''}{diffConv30d.toFixed(0)}% conv
                       </span>
                       <span className="text-[10px] text-white/30">vs equipe</span>
                     </div>
