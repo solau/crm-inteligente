@@ -115,6 +115,7 @@ export default async function RoiReportPage() {
                     <th className="text-center py-3 px-4 font-medium">Msgs (7 Dias)</th>
                     <th className="text-center py-3 px-4 font-medium">Msgs (Mês)</th>
                     <th className="text-right py-3 px-4 font-medium">Vendas (Total)</th>
+                    <th className="text-center py-3 px-4 font-medium">Conversão</th>
                     <th className="text-right py-3 px-4 font-medium">Receita (Total)</th>
                   </tr>
                 </thead>
@@ -132,6 +133,7 @@ export default async function RoiReportPage() {
                         <td className="py-3 px-4 text-center">{data.msgsWeek}</td>
                         <td className="py-3 px-4 text-center">{data.msgsMonth}</td>
                         <td className="py-3 px-4 text-right text-emerald-500 font-semibold">{data.sales}</td>
+                        <td className="py-3 px-4 text-center font-bold text-indigo-400">{data.convRate}%</td>
                         <td className="py-3 px-4 text-right font-semibold whitespace-nowrap">{formatMoney(data.revenue)}</td>
                       </tr>
                     );

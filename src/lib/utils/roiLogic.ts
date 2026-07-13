@@ -81,6 +81,11 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
     sellerStats[seller].revenue += revenue;
   });
 
+  Object.keys(sellerStats).forEach(seller => {
+    const s = sellerStats[seller];
+    s.convRate = s.msgs > 0 ? ((s.sales / s.msgs) * 100).toFixed(1) : '0.0';
+  });
+
   const conversionRate = totalMessages > 0 ? ((totalSales / totalMessages) * 100).toFixed(1) : '0.0';
 
   return {
