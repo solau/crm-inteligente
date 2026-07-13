@@ -100,6 +100,9 @@ export function getKanbanColumns(
           if (daysToExpire !== null && daysToExpire > 1) {
             isCooldown = true;
           }
+        } else if (camp === 'CASHBACK_1D') {
+          // Se já falou no último dia, não precisa falar de novo no dia seguinte antes de expirar
+          isCooldown = true;
         } else if (camp === 'AUSENTE_45D' || camp === 'OFERTA_90D') {
           if (daysSinceInt <= 15) {
             isCooldown = true;
@@ -153,6 +156,8 @@ export function getKanbanColumns(
   }
 
   // Ordenações
+  colPosVenda.sort((a, b) => new Date(b.last_purchase_date!).getTime() - new Date(a.last_purchase_date!).getTime());
+  
   col1d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
   col5d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
   col10d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
