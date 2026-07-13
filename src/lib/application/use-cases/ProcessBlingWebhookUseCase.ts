@@ -51,13 +51,29 @@ export class ProcessBlingWebhookUseCase {
     const totalVenda = Number(fullOrder.total) || payload?.pedido?.total || 0;
     const orderId = fullOrder.id?.toString() || rawOrderId.toString();
 
-    // Matemática Exata do Desconto
+    // Matemática Exata do Desconto e Valor Pago
     const totalProdutos = Number(fullOrder.totalProdutos) || 0;
     const frete = Number(fullOrder.transporte?.frete) || 0;
     const outrasDespesas = Number(fullOrder.outrasDespesas) || 0;
-    const descontoAplicadoCalculado = totalProdutos + frete + outrasDespesas - totalVenda;
+    const descontoOficial = Number(fullOrder.desconto?.valor) || Number(payload?.pedido?.desconto) || 0;
+    
+    const valorBruto = totalProdutos + frete + outrasDespesas;
+    
+    let descontoAplicadoCalculado = 0;
+    
+    // Se o totalVenda que veio do Bling ainda estiver cheio (igual ao bruto), 
+    // mas houver um desconto preenchido no campo oficial, usamos ele.
+    if (totalVenda >= valorBruto && descontoOficial > 0) {
+      descontoAplicadoCalculado = descontoOficial;
+    } else if (valorBruto > totalVenda) {
+      // Se o totalVenda for menor que o bruto, significa que o Bling já subtraiu o desconto no total
+      descontoAplicadoCalculado = valorBruto - totalVenda;
+    }
     
     const descontoAplicado = descontoAplicadoCalculado > 0 ? Number(descontoAplicadoCalculado.toFixed(2)) : 0;
+    
+    // O Valor Real Pago é sempre o Bruto menos qualquer desconto detectado
+    const valorPagoReal = valorBruto - descontoAplicado;
 
     // 1. Tratamento de Alertas Críticos (Sem Telefone ou Consumidor Final)
     if (isSemTelefone || isConsumidorFinal) {
@@ -77,7 +93,7 @@ export class ProcessBlingWebhookUseCase {
 
       const alertColumnId = await this.kanbanRepository.getOrCreateColumn('🚨 Alertas Gerenciais', 1);
       
-      let msgAlerta = `Pedido ${orderId} (R$ ${totalVenda}): `;
+      let msgAlerta = `Pedido ${orderId} (R$ ${valorPagoReal}): `;
       if (isSemTelefone) msgAlerta += 'Cliente SEM TELEFONE! ';
       if (isConsumidorFinal) msgAlerta += 'Venda como Consumidor Final! ';
 
@@ -85,7 +101,7 @@ export class ProcessBlingWebhookUseCase {
         systemClient.id!,
         alertColumnId,
         msgAlerta,
-        totalVenda
+        valorPagoReal
       );
 
       // Se não tem telefone, é impossível fidelizar. Aborta o webhook aqui.
@@ -132,7 +148,7 @@ export class ProcessBlingWebhookUseCase {
     
     // Capping: Se o desconto for maior que 20%, gera alerta de violação e limita o consumo do cashback
     let descontoParaAbater = descontoAplicado;
-    const limiteCapping = totalVenda * 0.20;
+    const limiteCapping = valorBruto * 0.20;
     
     if (descontoAplicado > limiteCapping) {
       // Gera Alerta no Banco
@@ -150,7 +166,7 @@ export class ProcessBlingWebhookUseCase {
         cliente.id!,
         alertColumnId,
         `ALERTA: Desconto abusivo de R$ ${descontoAplicado} (Acima de 20%)`,
-        totalVenda
+        valorPagoReal
       );
     }
 
@@ -160,7 +176,7 @@ export class ProcessBlingWebhookUseCase {
     }
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)
-    const valorGerado = totalVenda * 0.10;
+    const valorGerado = valorPagoReal * 0.10;
     const now = new Date();
     const activeAt = new Date(now);
     activeAt.setDate(activeAt.getDate() + 1); // Alterado de 7 para 1
@@ -182,10 +198,10 @@ export class ProcessBlingWebhookUseCase {
     const saldoRealAtivo = await this.cashbackRepository.getActiveBalance(tenantId, cliente.id!);
     
     // Atualização de RFM Base (Recência, Frequência, Valor)
-    const novoTotalGasto = (Number(cliente.total_spent) || 0) + totalVenda;
+    const novoTotalGasto = (Number(cliente.total_spent) || 0) + valorPagoReal;
     
     // Cálculo do RFM Base (O Decay roda via Cron)
-    let baseRFM = (cliente.base_lead_score || 0) + 10 + Math.floor(totalVenda / 100);
+    let baseRFM = (cliente.base_lead_score || 0) + 10 + Math.floor(valorPagoReal / 100);
     baseRFM = Math.min(100, baseRFM);
     const novoLeadScore = baseRFM; // O score visível será igual ao base (Decay = 0) pois acabou de comprar
 
@@ -221,7 +237,7 @@ export class ProcessBlingWebhookUseCase {
       cliente.id!, 
       columnId, 
       'Acompanhamento Pós-Venda (Qualidade)', 
-      totalVenda
+      valorPagoReal
     );
 
     // 5. Atribuição de Conversão (Tracking)
@@ -233,7 +249,7 @@ export class ProcessBlingWebhookUseCase {
           tenantId,
           lastInteraction.id,
           orderId,
-          totalVenda
+          valorPagoReal
         );
       }
     }
