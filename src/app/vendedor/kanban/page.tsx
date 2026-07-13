@@ -74,6 +74,7 @@ export default async function KanbanPage() {
 
   let sellerName = 'Vendedor';
   let messagesToday = 0;
+  let conversionRate = '0.0';
   
   if (session?.id) {
     const { data: profile } = await supabase
@@ -93,6 +94,20 @@ export default async function KanbanPage() {
       .gte('created_at', `${todayStr}T00:00:00.000Z`);
       
     messagesToday = count || 0;
+
+    // Obter taxa de conversão do mês
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+    const { data: monthInteractions } = await supabase
+      .from('client_interactions')
+      .select('id, sales_attribution(id)')
+      .eq('user_id', session.id)
+      .gte('created_at', startOfMonth);
+      
+    if (monthInteractions) {
+      const totalMonthMsgs = monthInteractions.length;
+      const totalMonthSales = monthInteractions.filter(i => i.sales_attribution && i.sales_attribution.length > 0).length;
+      conversionRate = totalMonthMsgs > 0 ? ((totalMonthSales / totalMonthMsgs) * 100).toFixed(1) : '0.0';
+    }
   }
 
   return (
@@ -116,13 +131,24 @@ export default async function KanbanPage() {
                   <p className="text-sm font-bold text-white/90 capitalize">{sellerName}</p>
                 </div>
               </div>
-              <div className="pl-1">
-                <p className="text-[10px] uppercase tracking-wider text-white/50">Sua Meta Diária</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`text-lg font-black leading-none ${messagesToday >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
-                    {messagesToday}
-                  </span>
-                  <span className="text-sm font-medium text-white/30 leading-none">/ 30 msgs</span>
+              <div className="flex items-center gap-4 pl-1">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Sua Meta Diária</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`text-lg font-black leading-none ${messagesToday >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
+                      {messagesToday}
+                    </span>
+                    <span className="text-sm font-medium text-white/30 leading-none">/ 30 msgs</span>
+                  </div>
+                </div>
+                
+                <div className="border-l border-white/10 pl-4">
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">Conversão (Mês)</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-lg font-black leading-none text-indigo-400">
+                      {conversionRate}%
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
