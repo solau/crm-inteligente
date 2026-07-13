@@ -101,6 +101,13 @@ export default async function AdminDashboardPage() {
     }
   }
 
+  // 4. Alertas Gerenciais (Descontos abusivos etc) a partir de 01/07/2026
+  const { data: alerts } = await supabase
+    .from('managerial_alerts')
+    .select('id, created_at, order_id, message, resolved, clients(name)')
+    .gte('created_at', '2026-07-01T00:00:00Z')
+    .order('created_at', { ascending: false });
+
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -156,6 +163,40 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Section: Alertas Gerenciais */}
+        {alerts && alerts.length > 0 && (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-border bg-rose-500/5">
+              <h3 className="font-semibold text-rose-500 flex items-center gap-2">
+                <Activity size={18} />
+                Alertas do Sistema (Descontos &gt; 20%)
+              </h3>
+            </div>
+            <div className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 text-muted-foreground">
+                  <tr>
+                    <th className="text-left py-3 px-5 font-medium">Data</th>
+                    <th className="text-left py-3 px-5 font-medium">Pedido</th>
+                    <th className="text-left py-3 px-5 font-medium">Cliente</th>
+                    <th className="text-left py-3 px-5 font-medium">Mensagem do Alerta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {alerts.map((alert, idx) => (
+                    <tr key={idx} className="hover:bg-muted/10 transition-colors">
+                      <td className="py-3 px-5 whitespace-nowrap">{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
+                      <td className="py-3 px-5 font-bold">#{alert.order_id}</td>
+                      <td className="py-3 px-5 font-medium capitalize">{(alert.clients as any)?.name || 'Desconhecido'}</td>
+                      <td className="py-3 px-5 text-rose-500">{alert.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Listas e Rankings */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
