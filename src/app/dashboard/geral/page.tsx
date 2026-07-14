@@ -65,7 +65,7 @@ export default async function AdminDashboardPage() {
   // 2. Ranking Top 5 Clientes
   const { data: topClients } = await supabase
     .from('clients')
-    .select('name, phone, total_spent, last_purchase_date')
+    .select('id, name, phone, total_spent, last_purchase_date')
     .order('total_spent', { ascending: false })
     .limit(5);
 
