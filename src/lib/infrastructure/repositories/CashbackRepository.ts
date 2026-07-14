@@ -131,6 +131,15 @@ export class CashbackRepository {
    * Registra um Alerta Gerencial
    */
   async createAlert(tenantId: string, clientId: string, orderId: string, alertType: string, message: string): Promise<void> {
+    const { data: existing } = await supabaseAdmin
+      .from('managerial_alerts')
+      .select('id')
+      .eq('order_id', orderId)
+      .eq('alert_type', alertType)
+      .single();
+
+    if (existing) return;
+
     await supabaseAdmin
       .from('managerial_alerts')
       .insert({

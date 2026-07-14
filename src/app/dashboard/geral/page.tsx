@@ -39,11 +39,31 @@ export default async function AdminDashboardPage() {
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
   
-  const { count: newClients30d } = await supabase
-    .from('clients')
-    .select('id', { count: 'exact', head: true })
-    .gte('created_at', thirtyDaysAgo.toISOString());
+  // Para calcular novos clientes REAIS (primeira compra nos últimos 30 dias):
+  // 1. Pega todos que compraram nos últimos 30 dias
+  const { data: recentPurchases } = await supabase
+    .from('cashback_ledger')
+    .select('client_id')
+    .gte('created_at', thirtyDaysAgoStr);
+
+  const recentClientIds = Array.from(new Set(recentPurchases?.map(p => p.client_id) || []));
+
+  // 2. Verifica quais desses já tinham comprado antes dos 30 dias
+  let oldClientIds = new Set();
+  if (recentClientIds.length > 0) {
+    const { data: oldPurchases } = await supabase
+      .from('cashback_ledger')
+      .select('client_id')
+      .in('client_id', recentClientIds)
+      .lt('created_at', thirtyDaysAgoStr);
+    
+    oldClientIds = new Set(oldPurchases?.map(p => p.client_id) || []);
+  }
+
+  // 3. Novos clientes são os que estão em recent mas não em old
+  const newClients30d = recentClientIds.filter(id => !oldClientIds.has(id)).length;
 
   let totalLtv = 0;
   let buyersCount = 0;
@@ -104,11 +124,20 @@ export default async function AdminDashboardPage() {
   }
 
   // 4. Alertas Gerenciais (Descontos abusivos etc) a partir de 01/07/2026
-  const { data: alerts } = await supabase
+  const { data: alertsRaw } = await supabase
     .from('managerial_alerts')
     .select('id, created_at, order_id, message, resolved, clients(name)')
     .gte('created_at', '2026-07-01T00:00:00Z')
     .order('created_at', { ascending: false });
+    
+  // Garantir que alertas não apareçam duplicados na UI
+  const uniqueAlertsMap = new Map();
+  alertsRaw?.forEach(alert => {
+    if (!uniqueAlertsMap.has(alert.order_id)) {
+      uniqueAlertsMap.set(alert.order_id, alert);
+    }
+  });
+  const alerts = Array.from(uniqueAlertsMap.values());
 
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
