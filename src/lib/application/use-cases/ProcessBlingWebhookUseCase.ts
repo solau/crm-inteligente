@@ -144,6 +144,13 @@ export class ProcessBlingWebhookUseCase {
       return true;
     }
 
+    // Validação de Idempotência: Checa se este pedido já gerou cashback/RFM
+    const orderAlreadyProcessed = await this.cashbackRepository.checkOrderExists(orderId);
+    if (orderAlreadyProcessed) {
+      console.log(`Webhook Abortado: Pedido ${orderId} já processado anteriormente.`);
+      return true;
+    }
+
     // 2. Regra de Negócio: Inteligência de Cashback (LEDGER + FIFO + CAPPING)
     
     // Capping: Se o desconto for maior que 20%, gera alerta de violação e limita o consumo do cashback

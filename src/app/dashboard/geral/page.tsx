@@ -33,22 +33,24 @@ export default async function AdminDashboardPage() {
     .from('clients')
     .select('id, created_at, total_spent, lead_score');
 
-  let totalClients = 0;
-  let newClients30d = 0;
+  const { count: totalClients } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true });
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const { count: newClients30d } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', thirtyDaysAgo.toISOString());
+
   let totalLtv = 0;
   let buyersCount = 0;
   let totalHealthScore = 0;
 
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
-
   if (clientsData) {
-    totalClients = clientsData.length;
     for (const c of clientsData) {
-      if (c.created_at >= thirtyDaysAgoStr) {
-        newClients30d++;
-      }
       if (c.total_spent > 0) {
         totalLtv += Number(c.total_spent);
         buyersCount++;
@@ -58,7 +60,7 @@ export default async function AdminDashboardPage() {
   }
 
   const avgLTV = buyersCount > 0 ? totalLtv / buyersCount : 0;
-  const avgHealth = totalClients > 0 ? (totalHealthScore / totalClients).toFixed(0) : '0';
+  const avgHealth = (totalClients || 0) > 0 ? (totalHealthScore / (totalClients || 1)).toFixed(0) : '0';
 
   // 2. Ranking Top 5 Clientes
   const { data: topClients } = await supabase
@@ -136,7 +138,7 @@ export default async function AdminDashboardPage() {
               <p className="text-sm font-medium text-muted-foreground">Novos Clientes</p>
               <UserPlus className="text-indigo-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{newClients30d}</h2>
+            <h2 className="text-3xl font-bold mt-2">{newClients30d || 0}</h2>
             <p className="text-xs text-muted-foreground mt-1">Últimos 30 dias</p>
           </div>
 
@@ -145,7 +147,7 @@ export default async function AdminDashboardPage() {
               <p className="text-sm font-medium text-muted-foreground">Base Histórica</p>
               <Users className="text-blue-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{totalClients}</h2>
+            <h2 className="text-3xl font-bold mt-2">{totalClients || 0}</h2>
             <p className="text-xs text-muted-foreground mt-1">Total de cadastros</p>
           </div>
 
@@ -163,40 +165,6 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
         </div>
-
-        {/* Section: Alertas Gerenciais */}
-        {alerts && alerts.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-border bg-rose-500/5">
-              <h3 className="font-semibold text-rose-500 flex items-center gap-2">
-                <Activity size={18} />
-                Alertas do Sistema (Descontos &gt; 20%)
-              </h3>
-            </div>
-            <div className="p-0 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30 text-muted-foreground">
-                  <tr>
-                    <th className="text-left py-3 px-5 font-medium">Data</th>
-                    <th className="text-left py-3 px-5 font-medium">Pedido</th>
-                    <th className="text-left py-3 px-5 font-medium">Cliente</th>
-                    <th className="text-left py-3 px-5 font-medium">Mensagem do Alerta</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {alerts.map((alert, idx) => (
-                    <tr key={idx} className="hover:bg-muted/10 transition-colors">
-                      <td className="py-3 px-5 whitespace-nowrap">{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
-                      <td className="py-3 px-5 font-bold">#{alert.order_id}</td>
-                      <td className="py-3 px-5 font-medium capitalize">{(alert.clients as any)?.name || 'Desconhecido'}</td>
-                      <td className="py-3 px-5 text-rose-500">{alert.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* Listas e Rankings */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -231,7 +199,9 @@ export default async function AdminDashboardPage() {
                         </div>
                       </td>
                       <td className="py-4 px-5 font-medium capitalize">
-                        {c.name}
+                        <Link href={`/clientes/${c.id}`} className="hover:underline text-foreground">
+                          {c.name}
+                        </Link>
                         {c.phone && <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">{c.phone}</span>}
                       </td>
                       <td className="py-4 px-5 text-muted-foreground">
@@ -282,6 +252,40 @@ export default async function AdminDashboardPage() {
           </div>
 
         </div>
+
+        {/* Section: Alertas Gerenciais */}
+        {alerts && alerts.length > 0 && (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col mt-6">
+            <div className="p-4 border-b border-border bg-rose-500/5">
+              <h3 className="font-semibold text-rose-500 flex items-center gap-2">
+                <Activity size={18} />
+                Alertas do Sistema (Descontos &gt; 20%)
+              </h3>
+            </div>
+            <div className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 text-muted-foreground">
+                  <tr>
+                    <th className="text-left py-3 px-5 font-medium">Data</th>
+                    <th className="text-left py-3 px-5 font-medium">Pedido</th>
+                    <th className="text-left py-3 px-5 font-medium">Cliente</th>
+                    <th className="text-left py-3 px-5 font-medium">Mensagem do Alerta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {alerts.map((alert, idx) => (
+                    <tr key={idx} className="hover:bg-muted/10 transition-colors">
+                      <td className="py-3 px-5 whitespace-nowrap">{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
+                      <td className="py-3 px-5 font-bold">#{alert.order_id}</td>
+                      <td className="py-3 px-5 font-medium capitalize">{(alert.clients as any)?.name || 'Desconhecido'}</td>
+                      <td className="py-3 px-5 text-rose-500">{alert.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
