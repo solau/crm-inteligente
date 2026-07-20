@@ -23,7 +23,8 @@ export default async function MensagensPage() {
       ),
       sales_attribution (
         order_id,
-        revenue
+        revenue,
+        created_at
       )
     `)
     .order('created_at', { ascending: false });
@@ -48,11 +49,11 @@ export default async function MensagensPage() {
             <table className="w-full text-left text-sm text-white/80">
               <thead className="bg-white/5 text-white/50 font-medium">
                 <tr>
-                  <th className="px-6 py-4">Data e Hora</th>
+                  <th className="px-6 py-4">Data da Mensagem</th>
                   <th className="px-6 py-4">Cliente</th>
                   <th className="px-6 py-4">Vendedor</th>
                   <th className="px-6 py-4">Campanha</th>
-                  <th className="px-6 py-4">Conversão Gerada</th>
+                  <th className="px-6 py-4">Retorno (Venda)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -86,8 +87,11 @@ export default async function MensagensPage() {
                               <span className="text-emerald-400 font-bold block">
                                 {formatMoney(revenue)}
                               </span>
-                              <span className="text-white/40 text-xs">
+                              <span className="text-white/40 text-xs block mb-1">
                                 Pedido #{orderId}
+                              </span>
+                              <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                                {new Date(msg.sales_attribution[0].created_at).toLocaleDateString('pt-BR')}
                               </span>
                             </div>
                           ) : (
