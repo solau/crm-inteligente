@@ -18,6 +18,9 @@ export default async function MensagensPage() {
         name,
         phone
       ),
+      user_profiles (
+        name
+      ),
       sales_attribution (
         order_id,
         revenue
@@ -47,7 +50,7 @@ export default async function MensagensPage() {
                 <tr>
                   <th className="px-6 py-4">Data e Hora</th>
                   <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Telefone</th>
+                  <th className="px-6 py-4">Vendedor</th>
                   <th className="px-6 py-4">Campanha</th>
                   <th className="px-6 py-4">Conversão Gerada</th>
                 </tr>
@@ -67,9 +70,10 @@ export default async function MensagensPage() {
                         </td>
                         <td className="px-6 py-4 font-medium text-white/90">
                           {client?.name || 'Cliente Removido'}
+                          <span className="block text-white/50 text-xs font-normal">{client?.phone || '-'}</span>
                         </td>
-                        <td className="px-6 py-4 text-white/60">
-                          {client?.phone || '-'}
+                        <td className="px-6 py-4 text-white/80">
+                          {msg.user_profiles?.name || <span className="text-white/30 italic">Bot / Sistema</span>}
                         </td>
                         <td className="px-6 py-4">
                           <span className="bg-white/10 text-sky-400 px-3 py-1 rounded-full text-xs font-semibold">
