@@ -246,19 +246,24 @@ export class ProcessBlingWebhookUseCase {
     // 3. Regra de Negócio AI: Processa Preferências do Cliente
     const itensVendidos = fullOrder.itens || payload?.pedido?.itens || [];
     if (itensVendidos.length > 0) {
-      const produtosFormatados = itensVendidos.map((i: any) => ({ 
-        descricao: i.item?.descricao || i.descricao, 
-        quantidade: i.item?.quantidade || i.quantidade 
-      }));
-      
-      const novasPreferencias = await this.geminiService.analyzePreferences(
-        cliente.preferences, 
-        produtosFormatados
-      );
-      
-      await this.clientRepository.updateClient(cliente.id!, {
-        preferences: novasPreferencias
-      });
+      try {
+        const produtosFormatados = itensVendidos.map((i: any) => ({ 
+          descricao: i.item?.descricao || i.descricao, 
+          quantidade: i.item?.quantidade || i.quantidade 
+        }));
+        
+        const novasPreferencias = await this.geminiService.analyzePreferences(
+          cliente.preferences, 
+          produtosFormatados
+        );
+        
+        await this.clientRepository.updateClient(cliente.id!, {
+          preferences: novasPreferencias
+        });
+      } catch (error) {
+        console.error('Erro ao analisar preferências com Gemini:', error);
+        // Não aborta o webhook se a IA falhar, as outras regras críticas já rodaram
+      }
     }
 
     // 4. Regra de Negócio: Kanban Pós-venda
