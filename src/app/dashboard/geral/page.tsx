@@ -13,6 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
+import { RunJobButton } from '@/components/RunJobButton';
 
 export const revalidate = 0;
 
@@ -146,9 +147,12 @@ export default async function AdminDashboardPage() {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Visão Geral</h1>
-          <p className="text-muted-foreground mt-1 text-sm md:text-base">Saúde e Crescimento da Carteira de Clientes.</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Visão Geral</h1>
+            <p className="text-muted-foreground mt-1 text-sm md:text-base">Saúde e Crescimento da Carteira de Clientes.</p>
+          </div>
+          <RunJobButton />
         </div>
 
         {/* 4 Cards Principais */}
