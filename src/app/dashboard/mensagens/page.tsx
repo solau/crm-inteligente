@@ -1,0 +1,110 @@
+import { createClient } from '@supabase/supabase-js';
+
+export const revalidate = 0;
+
+export default async function MensagensPage() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: messages, error } = await supabase
+    .from('client_interactions')
+    .select(`
+      id,
+      campaign_type,
+      created_at,
+      clients (
+        name,
+        phone
+      ),
+      sales_attribution (
+        order_id,
+        revenue
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Erro ao buscar mensagens:', error);
+  }
+
+  const formatMoney = (val: number) => 
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  return (
+    <div className="min-h-screen bg-black/90 p-8">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold text-white mb-2">Registro de Mensagens Enviadas</h1>
+        <p className="text-white/50 mb-8">
+          Histórico detalhado de todas as abordagens do Kanban e conversões atribuídas.
+        </p>
+
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-md">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-white/80">
+              <thead className="bg-white/5 text-white/50 font-medium">
+                <tr>
+                  <th className="px-6 py-4">Data e Hora</th>
+                  <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4">Telefone</th>
+                  <th className="px-6 py-4">Campanha</th>
+                  <th className="px-6 py-4">Conversão Gerada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {messages && messages.length > 0 ? (
+                  messages.map((msg: any) => {
+                    const hasConversion = msg.sales_attribution && msg.sales_attribution.length > 0;
+                    const revenue = hasConversion ? msg.sales_attribution[0].revenue : 0;
+                    const orderId = hasConversion ? msg.sales_attribution[0].order_id : null;
+                    const client = msg.clients;
+                    
+                    return (
+                      <tr key={msg.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {new Date(msg.created_at).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="px-6 py-4 font-medium text-white/90">
+                          {client?.name || 'Cliente Removido'}
+                        </td>
+                        <td className="px-6 py-4 text-white/60">
+                          {client?.phone || '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="bg-white/10 text-sky-400 px-3 py-1 rounded-full text-xs font-semibold">
+                            {msg.campaign_type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {hasConversion ? (
+                            <div>
+                              <span className="text-emerald-400 font-bold block">
+                                {formatMoney(revenue)}
+                              </span>
+                              <span className="text-white/40 text-xs">
+                                Pedido #{orderId}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-white/30 italic">Pendente</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-white/50">
+                      Nenhuma mensagem enviada até o momento.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
