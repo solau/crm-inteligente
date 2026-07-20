@@ -109,11 +109,22 @@ export function getKanbanColumns(
           }
         }
       }
+    // Prioridade 1: Pós Venda
+    let assignedPosVenda = false;
+    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
+      const isPosVendaResolved = lastInt?.campaign === 'POS_VENDA' && new Date(lastInt.date).getTime() >= new Date(c.last_purchase_date!).getTime();
+      
+      if (!isPosVendaResolved) {
+        colPosVenda.push(c);
+        assignedPosVenda = true;
+      }
     }
+
+    if (assignedPosVenda) continue;
 
     if (isCooldown) continue;
 
-    // Prioridade 1: Cashback
+    // Prioridade 2: Cashback
     let assigned = false;
     if (c.has_active && daysToExpire !== null) {
       if (daysToExpire <= 1) {
@@ -132,16 +143,6 @@ export function getKanbanColumns(
     }
 
     if (assigned) continue;
-
-    // Prioridade 2: Pós Venda
-    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
-      const isPosVendaResolved = lastInt?.campaign === 'POS_VENDA' && new Date(lastInt.date).getTime() >= new Date(c.last_purchase_date!).getTime();
-      
-      if (!isPosVendaResolved) {
-        colPosVenda.push(c);
-        continue;
-      }
-    }
 
     // Prioridade 3: Ausências
     if (daysSincePurchase !== null) {
