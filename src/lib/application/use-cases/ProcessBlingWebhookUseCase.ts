@@ -144,6 +144,29 @@ export class ProcessBlingWebhookUseCase {
       return true;
     }
 
+    // 5. Atribuição de Conversão (Tracking) ANTECIPADA
+    if (this.interactionRepository) {
+      // Data exata em que o pedido foi criado no Bling, ou a data atual
+      let saleDateStr = new Date().toISOString();
+      if (fullOrder.data) {
+        saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
+      }
+      
+      const attributionExists = await this.interactionRepository.checkAttributionExists(orderId);
+      if (!attributionExists) {
+        const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!, saleDateStr);
+        // Atribui se a interação ocorreu nos últimos 15 dias
+        if (lastInteraction) {
+          await this.interactionRepository.attributeSale(
+            tenantId,
+            lastInteraction.id,
+            orderId,
+            valorPagoReal
+          );
+        }
+      }
+    }
+
     // Validação de Idempotência: Checa se este pedido já gerou cashback/RFM
     const orderAlreadyProcessed = await this.cashbackRepository.checkOrderExists(orderId);
     if (orderAlreadyProcessed) {
@@ -247,27 +270,7 @@ export class ProcessBlingWebhookUseCase {
       valorPagoReal
     );
 
-    // 5. Atribuição de Conversão (Tracking)
-    if (this.interactionRepository) {
-      // Data exata em que o pedido foi criado no Bling, ou a data atual
-      let saleDateStr = now.toISOString();
-      if (fullOrder.data) {
-        // Se a venda tem data (ex: '2026-07-13'), garantimos que a interação foi ANTES ou NO MESMO DIA
-        // Adicionamos '23:59:59' para cobrir o dia inteiro da venda, caso a interação tenha acontecido horas antes da aprovação
-        saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
-      }
-      
-      const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!, saleDateStr);
-      // Atribui se a interação ocorreu nos últimos 15 dias (regra aplicada no repositório)
-      if (lastInteraction) {
-        await this.interactionRepository.attributeSale(
-          tenantId,
-          lastInteraction.id,
-          orderId,
-          valorPagoReal
-        );
-      }
-    }
+
 
     return true;
   }

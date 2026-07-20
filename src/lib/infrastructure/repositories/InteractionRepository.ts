@@ -66,4 +66,18 @@ export class InteractionRepository {
       console.error('Erro ao registrar interação:', error);
     }
   }
+
+  async checkAttributionExists(orderId: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('sales_attribution')
+      .select('id')
+      .eq('order_id', orderId)
+      .limit(1)
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Erro ao verificar atribuição de venda:', error);
+    }
+    return !!data;
+  }
 }
