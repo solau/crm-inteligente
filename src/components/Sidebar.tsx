@@ -33,6 +33,10 @@ export default async function Sidebar() {
             <Target size={20} className="text-muted-foreground" />
             <span>Kanban de Vendas</span>
           </Link>
+          <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+            <MessageCircle size={20} className="text-muted-foreground" />
+            <span>Mensagens Enviadas</span>
+          </Link>
 
           {session?.role === 'ADMIN' && (
             <>
@@ -43,10 +47,6 @@ export default async function Sidebar() {
               <Link href="/dashboard/conversao" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <BarChart3 size={20} className="text-muted-foreground" />
                 <span>Conversão</span>
-              </Link>
-              <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
-                <MessageCircle size={20} className="text-muted-foreground" />
-                <span>Mensagens Enviadas</span>
               </Link>
               <Link href="/relatorios/roi" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <BarChart3 size={20} className="text-muted-foreground" />
@@ -77,15 +77,15 @@ export default async function Sidebar() {
           <Target size={20} />
           <span className="text-[10px] font-medium">Kanban</span>
         </Link>
+        <Link href="/dashboard/mensagens" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
+          <MessageCircle size={20} />
+          <span className="text-[10px] font-medium">Msgs</span>
+        </Link>
         {session?.role === 'ADMIN' && (
           <>
             <Link href="/dashboard/geral" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
               <LayoutDashboard size={20} />
               <span className="text-[10px] font-medium">Geral</span>
-            </Link>
-            <Link href="/dashboard/mensagens" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
-              <MessageCircle size={20} />
-              <span className="text-[10px] font-medium">Msgs</span>
             </Link>
             <Link href="/relatorios/roi" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
               <BarChart3 size={20} />
