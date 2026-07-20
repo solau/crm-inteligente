@@ -112,6 +112,7 @@ export function getKanbanColumns(
           }
         }
       }
+    }
     // Prioridade 1: Pós Venda
     let assignedPosVenda = false;
     if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
@@ -189,3 +190,4 @@ export function getKanbanColumns(
     col90d
   };
 }
+
