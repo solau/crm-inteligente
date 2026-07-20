@@ -1,4 +1,4 @@
-import { getKanbanColumns, KanbanClient, Interaction } from '../kanbanLogic';
+import { getKanbanColumns, KanbanClient, ClientInteractions } from '../kanbanLogic';
 
 describe('Kanban Logic - Cooldown and Priority Rules', () => {
   const baseClient: KanbanClient = {
@@ -27,8 +27,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     const interactionDate = createDate(-1);
     const client = { ...baseClient, last_purchase_date: purchaseDate };
     
-    const interactions = {
-      '1': { date: interactionDate, campaign: 'POS_VENDA' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: interactionDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: interactionDate, campaign: 'POS_VENDA' } }
     };
 
     const result = getKanbanColumns([client], interactions, new Set());
@@ -40,8 +40,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     const purchaseDate = createDate(-1);    // Comprou de novo ontem
     const client = { ...baseClient, last_purchase_date: purchaseDate };
     
-    const interactions = {
-      '1': { date: interactionDate, campaign: 'POS_VENDA' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: interactionDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: interactionDate, campaign: 'POS_VENDA' } }
     };
 
     const result = getKanbanColumns([client], interactions, new Set());
@@ -49,8 +49,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
   });
 
   test('Regra 15 Dias: Contato esconde o card de 10 dias e reaparece em 5 dias', () => {
-    const interactions = {
-      '1': { date: createDate(-3), campaign: 'CASHBACK_15D' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-3), campaign: 'CASHBACK_15D' }, latestPosVenda: null }
     };
     
     // Faltam 10 dias (não deve aparecer porque está no cooldown > 5)
@@ -65,8 +65,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
   });
 
   test('Regra 10 Dias: Contato esconde o card de 5 dias e reaparece no último dia', () => {
-    const interactions = {
-      '1': { date: createDate(-3), campaign: 'CASHBACK_10D' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-3), campaign: 'CASHBACK_10D' }, latestPosVenda: null }
     };
     
     // Faltam 5 dias (não deve aparecer porque está no cooldown > 1)
@@ -81,8 +81,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
   });
 
   test('Regra 5 Dias: Contato esconde e reaparece no último dia', () => {
-    const interactions = {
-      '1': { date: createDate(-3), campaign: 'CASHBACK_5D' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-3), campaign: 'CASHBACK_5D' }, latestPosVenda: null }
     };
     
     // Faltam 3 dias (não deve aparecer porque está no cooldown > 1)
@@ -97,8 +97,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
   });
 
   test('Qualquer contato HOJE aplica cooldown global (card some até virar o dia)', () => {
-    const interactions = {
-      '1': { date: createDate(0), campaign: 'CASHBACK_1D' }
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(0), campaign: 'CASHBACK_1D' }, latestPosVenda: null }
     };
     
     // Mesmo faltando 1 dia (Expira hoje), se contatou HOJE, ele não deve aparecer.

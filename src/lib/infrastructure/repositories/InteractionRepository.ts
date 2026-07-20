@@ -37,14 +37,15 @@ export class InteractionRepository {
     return data;
   }
 
-  async attributeSale(tenantId: string, interactionId: string, orderId: string, revenue: number) {
+  async attributeSale(tenantId: string, interactionId: string, orderId: string, revenue: number, saleDateStr?: string) {
     const { error } = await this.supabase
       .from('sales_attribution')
       .insert({
         tenant_id: tenantId,
         interaction_id: interactionId,
         order_id: orderId,
-        revenue: revenue
+        revenue: revenue,
+        ...(saleDateStr ? { created_at: saleDateStr } : {})
       });
       
     if (error) {

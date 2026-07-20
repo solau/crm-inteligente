@@ -8,6 +8,7 @@ describe('ProcessBlingWebhookUseCase', () => {
   let mockCashbackRepo: any;
   let mockGeminiService: jest.Mocked<GeminiService>;
   let mockBlingProvider: any;
+  let mockInteractionRepo: any;
 
   beforeEach(() => {
     mockClientRepo = {
@@ -32,6 +33,10 @@ describe('ProcessBlingWebhookUseCase', () => {
       analyzePreferences: jest.fn().mockResolvedValue('Mock Preferências'),
     } as any;
 
+    mockInteractionRepo = {
+      attributeSale: jest.fn(),
+    };
+
     mockBlingProvider = {
       getOrderById: jest.fn().mockResolvedValue({
         id: 'order-123',
@@ -50,7 +55,8 @@ describe('ProcessBlingWebhookUseCase', () => {
       mockKanbanRepo, 
       mockGeminiService,
       mockCashbackRepo,
-      mockBlingProvider
+      mockBlingProvider,
+      mockInteractionRepo
     );
   });
 
