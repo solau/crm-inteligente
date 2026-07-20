@@ -145,13 +145,13 @@ export class ProcessBlingWebhookUseCase {
     }
 
     // 5. Atribuição de Conversão (Tracking) ANTECIPADA
+    // Data exata em que o pedido foi criado no Bling, ou a data atual
+    let saleDateStr = new Date().toISOString();
+    if (fullOrder.data) {
+      saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
+    }
+
     if (this.interactionRepository) {
-      // Data exata em que o pedido foi criado no Bling, ou a data atual
-      let saleDateStr = new Date().toISOString();
-      if (fullOrder.data) {
-        saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
-      }
-      
       const attributionExists = await this.interactionRepository.checkAttributionExists(orderId);
       if (!attributionExists) {
         const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!, saleDateStr);
@@ -161,7 +161,8 @@ export class ProcessBlingWebhookUseCase {
             tenantId,
             lastInteraction.id,
             orderId,
-            valorPagoReal
+            valorPagoReal,
+            saleDateStr
           );
         }
       }
@@ -207,10 +208,10 @@ export class ProcessBlingWebhookUseCase {
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)
     const valorGerado = valorPagoReal * 0.10;
-    const now = new Date();
-    const activeAt = new Date(now);
+    const saleDate = new Date(saleDateStr);
+    const activeAt = new Date(saleDate);
     activeAt.setDate(activeAt.getDate() + 1); // Alterado de 7 para 1
-    const expiresAt = new Date(now);
+    const expiresAt = new Date(saleDate);
     expiresAt.setDate(expiresAt.getDate() + 45);
 
     await this.cashbackRepository.addCashback({
@@ -240,7 +241,7 @@ export class ProcessBlingWebhookUseCase {
       lead_score: novoLeadScore,
       base_lead_score: baseRFM,
       total_spent: novoTotalGasto,
-      last_purchase_date: now.toISOString()
+      last_purchase_date: saleDateStr
     });
 
     // 3. Regra de Negócio AI: Processa Preferências do Cliente
