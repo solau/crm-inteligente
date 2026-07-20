@@ -6,7 +6,7 @@ import { getKanbanColumns } from '@/lib/utils/kanbanLogic';
 interface KanbanBoardProps {
   clients: any[];
   session?: any;
-  lastInteractions?: Record<string, { date: string, campaign: string }>;
+  lastInteractions?: Record<string, { latest: { date: string, campaign: string } | null, latestPosVenda: { date: string, campaign: string } | null }>;
 }
 
 export function KanbanBoard({ clients, session, lastInteractions = {} }: KanbanBoardProps) {

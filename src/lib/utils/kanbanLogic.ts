@@ -6,9 +6,9 @@ export interface KanbanClient {
   [key: string]: any;
 }
 
-export interface Interaction {
-  date: string;
-  campaign: string;
+export interface ClientInteractions {
+  latest: { date: string, campaign: string } | null;
+  latestPosVenda: { date: string, campaign: string } | null;
 }
 
 export interface KanbanColumns {
@@ -35,7 +35,7 @@ export function parseSafeDate(dateStr: string | null): Date | null {
 
 export function getKanbanColumns(
   clients: KanbanClient[],
-  lastInteractions: Record<string, Interaction>,
+  lastInteractions: Record<string, ClientInteractions>,
   localContacted: Set<string>,
   now: Date = new Date()
 ): KanbanColumns {
@@ -73,7 +73,10 @@ export function getKanbanColumns(
     const daysToExpire = diffDays(c.next_expire_date);
     const daysSincePurchase = diffDaysPast(c.last_purchase_date);
     
-    const lastInt = lastInteractions[c.id];
+    const record = lastInteractions[c.id];
+    const lastInt = record?.latest;
+    const lastPosVenda = record?.latestPosVenda;
+    
     let isCooldown = false;
 
     // Lógica de Cooldown Baseada na Última Interação
@@ -112,9 +115,18 @@ export function getKanbanColumns(
     // Prioridade 1: Pós Venda
     let assignedPosVenda = false;
     if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
+      // Regra de Trava de Pós-Venda (30 dias)
+      let receivedPosVendaRecently = false;
+      if (lastPosVenda) {
+        const daysSincePosVenda = Math.ceil((today.getTime() - new Date(lastPosVenda.date).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSincePosVenda <= 30) {
+          receivedPosVendaRecently = true;
+        }
+      }
+      
       const isPosVendaResolved = lastInt?.campaign === 'POS_VENDA' && new Date(lastInt.date).getTime() >= new Date(c.last_purchase_date!).getTime();
       
-      if (!isPosVendaResolved) {
+      if (!isPosVendaResolved && !receivedPosVendaRecently) {
         colPosVenda.push(c);
         assignedPosVenda = true;
       }

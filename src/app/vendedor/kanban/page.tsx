@@ -48,26 +48,33 @@ export default async function KanbanPage() {
 
   // The error handling is inside the loop
 
-  // Busca interações dos últimos 15 dias para lógica de Cooldown
-  const fifteenDaysAgo = new Date();
-  fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-  fifteenDaysAgo.setHours(0, 0, 0, 0);
+  // Busca interações dos últimos 30 dias para lógica de Cooldown e Pós-Venda
+  const thirtyDaysAgoCooldown = new Date();
+  thirtyDaysAgoCooldown.setDate(thirtyDaysAgoCooldown.getDate() - 30);
+  thirtyDaysAgoCooldown.setHours(0, 0, 0, 0);
   
   const { data: interactionsData } = await supabase
     .from('client_interactions')
     .select('client_id, created_at, campaign_type')
-    .gte('created_at', fifteenDaysAgo.toISOString())
+    .gte('created_at', thirtyDaysAgoCooldown.toISOString())
     .order('created_at', { ascending: false });
     
-  // Mapeia para pegar apenas a interação mais recente de cada cliente nos últimos 15 dias
-  const lastInteractions: Record<string, { date: string, campaign: string }> = {};
+  // Mapeia para pegar a interação mais recente geral, e a interação mais recente de PÓS_VENDA
+  const lastInteractions: Record<string, { latest: { date: string, campaign: string } | null, latestPosVenda: { date: string, campaign: string } | null }> = {};
   if (interactionsData) {
     for (const int of interactionsData) {
       if (!lastInteractions[int.client_id]) {
-        lastInteractions[int.client_id] = {
-          date: int.created_at,
-          campaign: int.campaign_type
-        };
+        lastInteractions[int.client_id] = { latest: null, latestPosVenda: null };
+      }
+      
+      const record = lastInteractions[int.client_id];
+      
+      if (!record.latest) {
+        record.latest = { date: int.created_at, campaign: int.campaign_type };
+      }
+      
+      if (!record.latestPosVenda && int.campaign_type === 'POS_VENDA') {
+        record.latestPosVenda = { date: int.created_at, campaign: int.campaign_type };
       }
     }
   }
