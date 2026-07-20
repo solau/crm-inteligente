@@ -53,6 +53,7 @@ export default async function MensagensPage() {
                   <th className="px-6 py-4">Cliente</th>
                   <th className="px-6 py-4">Vendedor</th>
                   <th className="px-6 py-4">Campanha</th>
+                  <th className="px-6 py-4">Próximo Contato Liberado</th>
                   <th className="px-6 py-4">Retorno (Venda)</th>
                 </tr>
               </thead>
@@ -80,6 +81,26 @@ export default async function MensagensPage() {
                           <span className="bg-white/10 text-sky-400 px-3 py-1 rounded-full text-xs font-semibold">
                             {msg.campaign_type}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {(() => {
+                            const nextDate = new Date(msg.created_at);
+                            nextDate.setDate(nextDate.getDate() + 15);
+                            const isReleased = nextDate < new Date();
+                            
+                            return (
+                              <div>
+                                <span className="text-white/80 block">
+                                  {nextDate.toLocaleDateString('pt-BR')}
+                                </span>
+                                {isReleased ? (
+                                  <span className="text-emerald-400 text-xs font-semibold">✅ Liberado</span>
+                                ) : (
+                                  <span className="text-amber-400 text-xs font-semibold">⏳ Em Cooldown</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4">
                           {hasConversion ? (
