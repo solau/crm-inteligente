@@ -267,9 +267,9 @@ export class ProcessBlingWebhookUseCase {
       }
     }
 
-    // 4. Regra de Negócio: Kanban Pós-venda
+    // 4. Regra de Negócio: Kanban Pós-venda (Move o cliente para a coluna Pós-Venda)
     const columnId = await this.kanbanRepository.getOrCreateColumn('Pós-Venda', 99);
-    await this.kanbanRepository.createDeal(
+    await this.kanbanRepository.moveOrCreatePostSalesDeal(
       cliente.id!, 
       columnId, 
       'Acompanhamento Pós-Venda (Qualidade)', 

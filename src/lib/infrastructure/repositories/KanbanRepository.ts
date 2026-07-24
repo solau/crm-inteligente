@@ -12,8 +12,8 @@ export class KanbanRepository {
       .from('kanban_columns')
       .select('id')
       .eq('tenant_id', this.tenantId)
-      .eq('title', title)
-      .single();
+      .ilike('title', `%${title}%`)
+      .maybeSingle();
     
     if (!column) {
       const { data: newColumn, error } = await supabaseAdmin
@@ -49,6 +49,29 @@ export class KanbanRepository {
 
     if (error) {
       throw new Error(`Erro ao criar card no Kanban: ${error.message}`);
+    }
+  }
+
+  // Move a negociação existente do cliente para o Pós-Venda ou cria se não existir
+  async moveOrCreatePostSalesDeal(clientId: string, columnId: string, title: string, value: number): Promise<void> {
+    const { data: existingDeal } = await supabaseAdmin
+      .from('deals')
+      .select('id')
+      .eq('client_id', clientId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingDeal) {
+      await supabaseAdmin
+        .from('deals')
+        .update({
+          column_id: columnId,
+          title,
+          value
+        })
+        .eq('id', existingDeal.id);
+    } else {
+      await this.createDeal(clientId, columnId, title, value);
     }
   }
 }

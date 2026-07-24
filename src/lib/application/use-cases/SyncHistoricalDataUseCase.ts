@@ -1,17 +1,24 @@
 import { BlingProvider } from '../../infrastructure/providers/BlingProvider';
 import { ClientRepository } from '../../infrastructure/repositories/ClientRepository';
 import { CashbackRepository } from '../../infrastructure/repositories/CashbackRepository';
+import { KanbanRepository } from '../../infrastructure/repositories/KanbanRepository';
+import { InteractionRepository } from '../../infrastructure/repositories/InteractionRepository';
 
 export class SyncHistoricalDataUseCase {
   constructor(
     private blingProvider: BlingProvider,
     private clientRepository: ClientRepository,
-    private cashbackRepository: CashbackRepository
+    private cashbackRepository: CashbackRepository,
+    private kanbanRepository?: KanbanRepository,
+    private interactionRepository?: InteractionRepository
   ) {}
 
   async execute(): Promise<{ success: boolean; count: number }> {
     const historicalOrders = await this.blingProvider.fetchHistoricalData();
     const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
+
+    const kanbanRepo = this.kanbanRepository || new KanbanRepository(tenantId);
+    const interactionRepo = this.interactionRepository || new InteractionRepository();
 
     // Para evitar gargalos, processamos em sequência
     for (const order of historicalOrders) {
@@ -51,7 +58,7 @@ export class SyncHistoricalDataUseCase {
       
       const orderDate = new Date(order.data);
       const activeAt = new Date(orderDate);
-      activeAt.setDate(activeAt.getDate() + 1); // Carência mudou de 7 para 1 dia
+      activeAt.setDate(activeAt.getDate() + 1); // Carência de 1 dia
       const expiresAt = new Date(orderDate);
       expiresAt.setDate(expiresAt.getDate() + 45);
 
@@ -86,12 +93,10 @@ export class SyncHistoricalDataUseCase {
         novaDataUltimaCompra = orderDate;
       }
 
-      // Cálculo do RFM (Sem Decadência por enquanto, o Decay será diário)
-      // +10 por compra, +1 a cada R$100
+      // Cálculo do RFM
       let baseRFM = (cliente.base_lead_score || 0) + 10 + Math.floor(totalVenda / 100);
-      baseRFM = Math.min(100, baseRFM); // Cap em 100
-      
-      const novoLeadScore = baseRFM; // O score visível será o mesmo do base logo após a compra (Recência = 0)
+      baseRFM = Math.min(100, baseRFM);
+      const novoLeadScore = baseRFM;
 
       await this.clientRepository.updateClient(cliente.id!, {
         cashback_balance: saldoRealAtivo,
@@ -101,6 +106,39 @@ export class SyncHistoricalDataUseCase {
         total_spent: novoTotalGasto,
         last_purchase_date: novaDataUltimaCompra.toISOString()
       });
+
+      // 3. Regra de Negócio: Movimentação para a Coluna 'Pós-Venda' no Kanban
+      try {
+        const columnId = await kanbanRepo.getOrCreateColumn('Pós-Venda', 99);
+        await kanbanRepo.moveOrCreatePostSalesDeal(
+          cliente.id!,
+          columnId,
+          'Acompanhamento Pós-Venda (Qualidade)',
+          novoTotalGasto
+        );
+      } catch (err) {
+        console.error('Erro ao mover card para Pós-Venda:', err);
+      }
+
+      // 4. Regra de Negócio: Atribuição de Conversão de Mensagem de WhatsApp
+      try {
+        const saleDateStr = orderDate.toISOString();
+        const attributionExists = await interactionRepo.checkAttributionExists(order.order_id);
+        if (!attributionExists) {
+          const lastInteraction = await interactionRepo.getLatestInteraction(cliente.id!, saleDateStr);
+          if (lastInteraction) {
+            await interactionRepo.attributeSale(
+              tenantId,
+              lastInteraction.id,
+              order.order_id,
+              totalVenda,
+              saleDateStr
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao atribuir conversão de venda:', err);
+      }
     }
 
     return { success: true, count: historicalOrders.length };
