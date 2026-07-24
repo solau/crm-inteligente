@@ -66,6 +66,12 @@ export function getKanbanColumns(
   const col90d: KanbanClient[] = [];
 
   for (const c of clients) {
+    // Exclusão estrita: Clientes sem telefone cadastrado ou com telefones genéricos não entram no Kanban
+    const cleanPhone = c.phone ? c.phone.replace(/\D/g, '') : '';
+    if (!cleanPhone || cleanPhone.length < 10 || cleanPhone === '00000000000' || cleanPhone.startsWith('5500')) {
+      continue;
+    }
+
     if (localContacted.has(c.id)) {
       continue;
     }

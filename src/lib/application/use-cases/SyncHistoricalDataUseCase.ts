@@ -22,6 +22,34 @@ export class SyncHistoricalDataUseCase {
 
     // Para evitar gargalos, processamos em sequência
     for (const order of historicalOrders) {
+      const isSemTelefone = !order.telefone || order.telefone.replace(/\D/g, '').length < 10 || order.telefone.startsWith('5500');
+      if (isSemTelefone) {
+        try {
+          const alertColId = await kanbanRepo.getOrCreateColumn('🚨 Alertas Gerenciais', 1);
+          let systemClient = await this.clientRepository.getClientByPhone('00000000000');
+          if (!systemClient) {
+            systemClient = await this.clientRepository.upsertClientByPhone({
+              name: '⚠️ ALERTAS DO SISTEMA',
+              phone: '00000000000',
+              cashback_balance: 0,
+              lead_score: 0,
+              tenant_id: tenantId,
+              total_spent: 0,
+              base_lead_score: 0
+            });
+          }
+          await kanbanRepo.createDeal(
+            systemClient.id!,
+            alertColId,
+            `⚠️ ALERTA: Compra sem telefone cadastrado (${order.nome} - Pedido ${order.order_id} - R$ ${(order.total_gasto || 0).toFixed(2)})`,
+            order.total_gasto || 0
+          );
+        } catch (err) {
+          console.error('Erro ao gerar alerta de compra sem telefone:', err);
+        }
+        continue;
+      }
+
       // 1. Upsert Cliente (Telefone é a chave)
       let cliente = await this.clientRepository.getClientByPhone(order.telefone);
       
