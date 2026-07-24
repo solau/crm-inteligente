@@ -20,9 +20,9 @@ export class InteractionRepository {
       // Interação deve ter ocorrido antes ou no exato momento da venda
       query = query.lte('created_at', maxDateStr);
       
-      // Janela de atribuição: Apenas interações dos últimos 15 dias importam
+      // Janela de atribuição: Apenas interações dos últimos 30 dias que antecederam a venda importam
       const minDate = new Date(maxDateStr);
-      minDate.setDate(minDate.getDate() - 15);
+      minDate.setDate(minDate.getDate() - 30);
       query = query.gte('created_at', minDate.toISOString());
     }
 

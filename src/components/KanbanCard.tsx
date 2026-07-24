@@ -17,7 +17,6 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
 
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const hasValidSession = session?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(session.id);
 
   const registerInteraction = async () => {
     if (isLoading) return;
@@ -31,27 +30,27 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
           tenant_id: client.tenant_id,
           client_id: client.id,
           campaign_type: campaignType,
-          user_id: session.id
+          user_id: session?.id || null
         })
       });
       
-      router.refresh(); // Força o Next.js a limpar o cache do router
+      router.refresh(); // Força o Next.js a atualizar a rota
       
-      // Oculta o card instantaneamente
+      // Oculta o card no Kanban após registrar a conversa
       if (onMessageSent) {
         onMessageSent(client.id);
       }
     } catch (err) {
-      console.error('Erro ao registrar interação', err);
+      console.error('Erro ao registrar interação no WhatsApp:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Texto padrão do WhatsApp
+  // Texto padrão persuasivo do WhatsApp
   let wppText = `Olá ${client.name}, tudo bem?`;
   if (campaignType.includes('CASHBACK')) {
-    wppText = `Olá ${client.name}, vi que você tem ${formatMoney(client.cashback_balance)} em cashback que vai expirar logo. Quer aproveitar?`;
+    wppText = `Olá ${client.name}! Vi que você tem ${formatMoney(client.cashback_balance)} em saldo de cashback disponível. Gostaria de aproveitar em sua próxima compra?`;
   }
 
   const wppLink = `https://wa.me/55${client.phone}?text=${encodeURIComponent(wppText)}`;
@@ -87,11 +86,6 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
       <div className="flex justify-between items-center border-t border-white/10 pt-3 mt-1">
         <button 
           onClick={() => {
-            if (!hasValidSession) {
-              alert("Você não está logado! Redirecionando para a tela de login...");
-              router.push("/login");
-              return;
-            }
             registerInteraction();
           }}
           disabled={isLoading}
@@ -103,11 +97,6 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
         </button>
         <button 
           onClick={() => {
-            if (!hasValidSession) {
-              alert("Você não está logado! Redirecionando para a tela de login...");
-              router.push("/login");
-              return;
-            }
             if (!isLoading) {
               window.open(wppLink, '_blank', 'noopener,noreferrer');
               registerInteraction();
