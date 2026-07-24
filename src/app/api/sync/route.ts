@@ -3,6 +3,8 @@ import { SyncHistoricalDataUseCase } from '@/lib/application/use-cases/SyncHisto
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 import { ClientRepository } from '@/lib/infrastructure/repositories/ClientRepository';
 import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRepository';
+import { KanbanRepository } from '@/lib/infrastructure/repositories/KanbanRepository';
+import { InteractionRepository } from '@/lib/infrastructure/repositories/InteractionRepository';
 
 export const maxDuration = 300; // Permite que a sincronização demore até 5 minutos (Vercel/Next.js) sem dar timeout
 
@@ -15,8 +17,16 @@ export async function GET(request: Request) {
     const blingProvider = new BlingProvider(tenantId);
     const clientRepository = new ClientRepository(tenantId);
     const cashbackRepository = new CashbackRepository();
+    const kanbanRepository = new KanbanRepository(tenantId);
+    const interactionRepository = new InteractionRepository();
     
-    const useCase = new SyncHistoricalDataUseCase(blingProvider, clientRepository, cashbackRepository);
+    const useCase = new SyncHistoricalDataUseCase(
+      blingProvider,
+      clientRepository,
+      cashbackRepository,
+      kanbanRepository,
+      interactionRepository
+    );
     
     const result = await useCase.execute();
 
