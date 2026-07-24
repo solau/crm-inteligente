@@ -53,7 +53,20 @@ export class AgentOrchestrator {
 
   async triggerRoutineJobs(): Promise<{ success: boolean; triggeredJobs: string[]; logs: string[] }> {
     const routineAgent = new RoutineHealthAgent(this.tenantId);
-    return await routineAgent.triggerJobs();
+    const result = await routineAgent.triggerJobs();
+    
+    // Executa também o Agente de Reconciliação de Dados
+    try {
+      const { DataReconciliationAgent } = require('./DataReconciliationAgent');
+      const reconAgent = new DataReconciliationAgent(this.tenantId);
+      const reconReport = await reconAgent.runReconciliation();
+      result.triggeredJobs.push('Agente de Reconciliação de Compras e Kanban');
+      result.logs.push(`[${new Date().toLocaleTimeString()}] Agente de Reconciliação: ${reconReport.reconciledCount} cliente(s) auditados e re-alinhados.`);
+    } catch (e: any) {
+      result.logs.push(`[AVISO] Erro na reconciliação: ${e.message}`);
+    }
+
+    return result;
   }
 
   async validateBusinessRules() {

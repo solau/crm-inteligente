@@ -56,6 +56,15 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24 * 7 // 1 semana
     });
 
+    // Dispara a rotina autônoma do Agente de Reconciliação de Vendas e Kanban em segundo plano
+    try {
+      const { DataReconciliationAgent } = require('@/lib/agents/DataReconciliationAgent');
+      const agent = new DataReconciliationAgent('d948b6cc-cc2c-4399-8525-02f17f281d38');
+      agent.runReconciliation().catch((err: any) => console.error('Erro em segundo plano no login:', err));
+    } catch (e) {
+      // Continua sem bloquear o login do usuário
+    }
+
     return NextResponse.json({ success: true, user: { name: user.name, role: user.role } });
   } catch (error) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
