@@ -10,7 +10,7 @@ import { AgentMemoryService, AgentScanResult } from './AgentMemoryService';
 export class AgentOrchestrator {
   private tenantId: string;
 
-  constructor(tenantId: string = 'default-tenant') {
+  constructor(tenantId: string = 'd948b6cc-cc2c-4399-8525-02f17f281d38') {
     this.tenantId = tenantId;
   }
 
