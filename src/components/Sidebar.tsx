@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target } from 'lucide-react';
+import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target, Bot } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 
 export default async function Sidebar() {
@@ -25,6 +25,11 @@ export default async function Sidebar() {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Menu Principal</p>
           </div>
           
+          <Link href="/dashboard/agentes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-primary bg-primary/10 hover:bg-primary/20 transition-colors font-medium border border-primary/20">
+            <Bot size={20} className="text-primary" />
+            <span>Central de Agentes AI</span>
+          </Link>
+
           <Link href="/clientes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <Users size={20} className="text-muted-foreground" />
             <span>Clientes (Radar)</span>
