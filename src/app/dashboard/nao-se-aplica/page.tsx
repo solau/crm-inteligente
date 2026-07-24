@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Ban, RotateCcw, User, Phone, Calendar, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { Ban, RotateCcw, User, Phone, Calendar, ArrowLeft, ShieldAlert, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import ReactivateClientButton from '@/components/ReactivateClientButton';
 import { getSession } from '@/lib/auth';
@@ -40,6 +40,17 @@ export default async function NaoSeAplicaAdminPage() {
     }
   }
 
+  // Busca perfis de usuários para saber quem efetuou cada marcação
+  const { data: profiles } = await supabase.from('user_profiles').select('id, name');
+  const profileMap = new Map<string, string>();
+  (profiles || []).forEach(p => profileMap.set(p.id, p.name));
+  
+  // Mapeamento de IDs de sessão legados
+  profileMap.set('admin-1', 'Jorge');
+  profileMap.set('vend-1', 'Alane');
+  profileMap.set('vend-2', 'Harley');
+  profileMap.set('vend-3', 'Ycla');
+
   let ignoredClients: any[] = [];
   if (ignoredClientIds.length > 0) {
     const { data: clientsData } = await supabase
@@ -47,10 +58,15 @@ export default async function NaoSeAplicaAdminPage() {
       .select('id, name, phone, email, last_purchase_date, total_spent, lead_score')
       .in('id', ignoredClientIds);
 
-    ignoredClients = (clientsData || []).map(c => ({
-      ...c,
-      flaggedAt: metaMap.get(c.id)?.date || new Date().toISOString()
-    }));
+    ignoredClients = (clientsData || []).map(c => {
+      const meta = metaMap.get(c.id);
+      const userName = meta?.userId ? (profileMap.get(meta.userId) || 'Atendente') : 'Sistema';
+      return {
+        ...c,
+        flaggedAt: meta?.date || new Date().toISOString(),
+        flaggedBy: userName
+      };
+    });
   }
 
   const formatMoney = (val: number) =>
@@ -70,7 +86,7 @@ export default async function NaoSeAplicaAdminPage() {
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight">Clientes em "Não se Aplica"</h1>
             <p className="text-white/50 text-xs md:text-sm mt-1">
-              Clientes removidos do Kanban de Vendas. Clique em Reativar para restaurar o cliente na fila.
+              Clientes removidos do Kanban de Vendas com identificação do atendente responsável.
             </p>
           </div>
 
@@ -92,7 +108,7 @@ export default async function NaoSeAplicaAdminPage() {
                 Lista de Clientes Ocultados ({ignoredClients.length})
               </h2>
               <p className="text-xs text-white/50 mt-0.5">
-                Estes clientes não aparecem no Kanban dos vendedores.
+                Exibe o histórico de quem removeu o cliente e a data da ação.
               </p>
             </div>
           </div>
@@ -103,7 +119,8 @@ export default async function NaoSeAplicaAdminPage() {
                 <tr className="border-b border-white/10 text-white/40 uppercase tracking-wider">
                   <th className="pb-3">Cliente</th>
                   <th className="pb-3">Telefone</th>
-                  <th className="pb-3">Marcado Em</th>
+                  <th className="pb-3">Marcado Por</th>
+                  <th className="pb-3">Data da Marcação</th>
                   <th className="pb-3">Última Compra</th>
                   <th className="pb-3">LTV Total</th>
                   <th className="pb-3 text-right">Ação</th>
@@ -112,7 +129,7 @@ export default async function NaoSeAplicaAdminPage() {
               <tbody className="divide-y divide-white/5">
                 {ignoredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-white/40 text-sm">
+                    <td colSpan={7} className="py-8 text-center text-white/40 text-sm">
                       Nenhum cliente marcado como "Não se aplica". Todos os clientes estão disponíveis no Kanban.
                     </td>
                   </tr>
@@ -121,8 +138,14 @@ export default async function NaoSeAplicaAdminPage() {
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                       <td className="py-3.5 font-semibold text-white/90">{c.name}</td>
                       <td className="py-3.5 text-white/60">{c.phone}</td>
+                      <td className="py-3.5">
+                        <span className="inline-flex items-center gap-1.5 bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-1 rounded-lg border border-indigo-500/30 text-[11px]">
+                          <UserCheck className="w-3.5 h-3.5" />
+                          {c.flaggedBy}
+                        </span>
+                      </td>
                       <td className="py-3.5 text-rose-400 font-medium">
-                        {new Date(c.flaggedAt).toLocaleDateString('pt-BR')}
+                        {new Date(c.flaggedAt).toLocaleDateString('pt-BR')} às {new Date(c.flaggedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td className="py-3.5 text-white/60">
                         {c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString('pt-BR') : 'N/A'}

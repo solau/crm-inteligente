@@ -41,7 +41,7 @@ export async function GET() {
       return NextResponse.json({ success: true, clients: [] });
     }
 
-    // 3. Busca os dados dos clientes ignorados
+    // 3. Busca os dados dos clientes ignorados e os nomes dos usuários que efetuaram a marcação
     const { data: clients, error: cErr } = await supabaseAdmin
       .from('clients')
       .select('id, name, phone, email, last_purchase_date, total_spent, lead_score')
@@ -51,10 +51,28 @@ export async function GET() {
       return NextResponse.json({ error: cErr.message }, { status: 500 });
     }
 
-    const result = (clients || []).map(c => ({
-      ...c,
-      flaggedAt: metaMap.get(c.id)?.date || new Date().toISOString()
-    }));
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, name');
+
+    const profileMap = new Map<string, string>();
+    (profiles || []).forEach(p => profileMap.set(p.id, p.name));
+    
+    // Mapeamento de IDs legados
+    profileMap.set('admin-1', 'Jorge');
+    profileMap.set('vend-1', 'Alane');
+    profileMap.set('vend-2', 'Harley');
+    profileMap.set('vend-3', 'Ycla');
+
+    const result = (clients || []).map(c => {
+      const meta = metaMap.get(c.id);
+      const userName = meta?.userId ? (profileMap.get(meta.userId) || 'Atendente') : 'Sistema';
+      return {
+        ...c,
+        flaggedAt: meta?.date || new Date().toISOString(),
+        flaggedBy: userName
+      };
+    });
 
     return NextResponse.json({
       success: true,
