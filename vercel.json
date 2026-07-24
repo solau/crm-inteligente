@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cashback?secret=alpha-bull-cron-secret-123",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/agentes?secret=alpha-bull-cron-secret-123",
+      "schedule": "0 6 * * *"
     }
   ]
 }
