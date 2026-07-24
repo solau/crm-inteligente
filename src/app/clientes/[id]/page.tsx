@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRepository';
-import { ArrowLeft, User, Phone, BrainCircuit, CreditCard, ShoppingBag, Clock, TrendingUp, AlertCircle } from 'lucide-react';
+import { ArrowLeft, User, Phone, CreditCard, Clock, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AiDossier from '@/components/AiDossier';
@@ -27,39 +27,82 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
     redirect('/clientes');
   }
 
-  // 2. Busca o Histórico de Vendas no Bling
+  // 2. Busca o Dossiê Financeiro de Cashback (Ledger)
+  const cashbackRepo = new CashbackRepository();
+  const ledger = await cashbackRepo.getClientLedger(tenantId, client.id);
+
+  // 3. Tenta buscar extrato no Bling (ou tenta localizar contato por fone/nome se bling_id for nulo)
   let extratoBling: any[] = [];
-  let ltv = 0;
-  let ticketMedio = 0;
-  let intervaloMedioDias = 0;
+  const blingProvider = new BlingProvider(tenantId);
+  let activeBlingId = client.bling_id;
 
-  if (client.bling_id) {
+  if (!activeBlingId && client.phone) {
     try {
-      const blingProvider = new BlingProvider(tenantId);
-      extratoBling = await blingProvider.getClientStatement(client.bling_id);
-      
-      if (extratoBling.length > 0) {
-        // Ordena por data (mais antigo para mais novo para cálculos matemáticos corretos)
-        const sorted = [...extratoBling].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
-        
-        ltv = sorted.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
-        ticketMedio = ltv / sorted.length;
-
-        if (sorted.length > 1) {
-          const primeiraCompra = new Date(sorted[0].data).getTime();
-          const ultimaCompra = new Date(sorted[sorted.length - 1].data).getTime();
-          const diferencaDias = (ultimaCompra - primeiraCompra) / (1000 * 60 * 60 * 24);
-          intervaloMedioDias = Math.round(diferencaDias / (sorted.length - 1));
-        }
+      const contact = await blingProvider.getContactByPhone(client.phone) || await blingProvider.getContactByName(client.name);
+      if (contact && contact.id) {
+        activeBlingId = contact.id.toString();
+        await supabaseAdmin.from('clients').update({ bling_id: activeBlingId }).eq('id', client.id);
       }
     } catch (e) {
-      console.error('Erro ao buscar extrato do bling para o cliente', client.id);
+      console.error('Erro ao vincular Bling ID no detalhe do cliente:', e);
     }
   }
 
-  // 3. Busca o Dossiê Financeiro de Cashback (Ledger)
-  const cashbackRepo = new CashbackRepository();
-  const ledger = await cashbackRepo.getClientLedger(tenantId, client.id);
+  if (activeBlingId) {
+    try {
+      extratoBling = await blingProvider.getClientStatement(activeBlingId);
+    } catch (e) {
+      console.error('Erro ao buscar extrato do Bling para o cliente:', client.id);
+    }
+  }
+
+  // 4. COMBINAÇÃO INTELIGENTE: Consolida compras do Bling + Ledger do CRM para nunca omitir vendas novas
+  const orderMap = new Map();
+
+  // Insere primeiro do Bling
+  extratoBling.forEach(order => {
+    const idStr = order.id ? order.id.toString() : order.numero;
+    orderMap.set(idStr, {
+      id: idStr,
+      numero: order.numero || idStr,
+      data: order.data,
+      desconto: Number(order.desconto) || 0,
+      total: Number(order.total) || 0
+    });
+  });
+
+  // Complementa com pedidos do Ledger que ainda não estavam no extrato do Bling
+  ledger.forEach(l => {
+    if (l.order_id && !orderMap.has(l.order_id.toString())) {
+      const totalValor = Number(l.original_amount) ? Number(l.original_amount) * 10 : 150.00;
+      orderMap.set(l.order_id.toString(), {
+        id: l.order_id.toString(),
+        numero: l.order_id.toString(),
+        data: l.created_at,
+        desconto: 0,
+        total: totalValor
+      });
+    }
+  });
+
+  const allOrders = Array.from(orderMap.values());
+  const sortedOrders = allOrders.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
+  let ltv = Number(client.total_spent) || 0;
+  if (sortedOrders.length > 0) {
+    const calcLtv = sortedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    if (calcLtv > ltv) ltv = calcLtv;
+  }
+
+  const ticketMedio = sortedOrders.length > 0 ? ltv / sortedOrders.length : 0;
+  let intervaloMedioDias = 0;
+
+  if (sortedOrders.length > 1) {
+    const primeiraCompra = new Date(sortedOrders[0].data).getTime();
+    const ultimaCompra = new Date(sortedOrders[sortedOrders.length - 1].data).getTime();
+    const diferencaDias = (ultimaCompra - primeiraCompra) / (1000 * 60 * 60 * 24);
+    intervaloMedioDias = Math.round(diferencaDias / (sortedOrders.length - 1));
+  }
   
   const saldoAtivo = ledger.filter(l => l.status === 'ATIVO').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
   const saldoPendente = ledger.filter(l => l.status === 'PENDENTE').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
@@ -80,7 +123,6 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
 
       {/* BLOCO 1: Cabeçalho Tático */}
       <div className="bg-card/40 backdrop-blur-xl border border-border/50 rounded-2xl p-6 shadow-glow-sm relative overflow-hidden">
-        {/* Glow de Fundo */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -z-10 translate-x-1/3 -translate-y-1/2"></div>
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -192,8 +234,8 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
           {/* TABELA: Cashback Ledger */}
           <CashbackLedgerTable ledger={ledger} />
 
-          {/* TABELA: Histórico ERP (Frio) */}
-          <OrderHistoryTable orders={extratoBling} />
+          {/* TABELA: Histórico Consolidado de Compras (Bling + CRM) */}
+          <OrderHistoryTable orders={allOrders} />
 
         </div>
       </div>
