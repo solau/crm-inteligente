@@ -27,22 +27,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     let blingId = client.bling_id;
 
-    // 2. Se o cliente não tem bling_id, busca na API de contatos do Bling pelo telefone
+    // 2. Se o cliente não tem bling_id, busca na API de contatos do Bling pelo telefone ou nome
     if (!blingId) {
-      if (!client.phone) {
-        return NextResponse.json({ error: 'Cliente sem telefone e sem ID do Bling' }, { status: 400 });
+      console.log(`Buscando bling_id para o cliente ${client.name} (Telefone: ${client.phone})...`);
+      let blingContact = client.phone ? await blingProvider.getContactByPhone(client.phone) : null;
+      
+      // Fallback: Se não encontrou por telefone, busca pelo NOME do cliente no Bling
+      if (!blingContact && client.name) {
+        console.log(`Telefone não retornou contato no Bling. Tentando busca por Nome: ${client.name}...`);
+        blingContact = await blingProvider.getContactByName(client.name);
       }
 
-      console.log(`Buscando bling_id para o telefone ${client.phone}...`);
-      const blingContact = await blingProvider.getContactByPhone(client.phone);
-      
       if (blingContact && blingContact.id) {
         blingId = blingContact.id.toString();
         // Atualiza no nosso banco para não precisar buscar novamente no futuro
         await clientRepository.updateClient(clientId, { bling_id: blingId });
-        console.log(`Bling ID atualizado para o cliente: ${blingId}`);
+        console.log(`Bling ID atualizado com sucesso para o cliente: ${blingId}`);
       } else {
-        return NextResponse.json({ error: 'Cliente não encontrado no Bling com este telefone' }, { status: 404 });
+        return NextResponse.json({ error: `Cliente "${client.name}" não foi localizado no cadastro de contatos do Bling por Telefone ou Nome.` }, { status: 404 });
       }
     }
 

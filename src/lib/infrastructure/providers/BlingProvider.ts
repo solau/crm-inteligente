@@ -326,13 +326,41 @@ export class BlingProvider {
     }
   }
 
-  // Busca um contato na API v3 pelo telefone
+  // Busca um contato na API v3 pelo telefone ou por variações do número
   async getContactByPhone(phone: string) {
     const token = await this.getValidToken();
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
 
+    const cleanPhone = phone.replace(/\D/g, '');
+    const variants = [
+      cleanPhone,
+      cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone,
+      cleanPhone.length >= 8 ? cleanPhone.slice(-8) : cleanPhone
+    ];
+
+    for (const searchStr of variants) {
+      try {
+        const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(searchStr)}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await res.json();
+        if (result && result.data && result.data.length > 0) {
+          return result.data[0];
+        }
+      } catch (e) {
+        console.error(`Erro ao buscar contato pelo termo ${searchStr} no Bling:`, e);
+      }
+    }
+    return null;
+  }
+
+  // Busca um contato na API v3 pelo Nome do cliente
+  async getContactByName(name: string) {
+    const token = await this.getValidToken();
+    if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
+
     try {
-      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${phone}`, {
+      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(name)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const result = await res.json();
@@ -341,7 +369,7 @@ export class BlingProvider {
       }
       return null;
     } catch (e) {
-      console.error(`Erro ao buscar contato pelo telefone ${phone} no Bling:`, e);
+      console.error(`Erro ao buscar contato pelo nome ${name} no Bling:`, e);
       return null;
     }
   }
