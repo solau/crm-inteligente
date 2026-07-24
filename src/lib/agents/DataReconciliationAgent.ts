@@ -3,6 +3,7 @@ import { supabaseAdmin as supabase } from '@/lib/supabase';
 export interface ReconciliationReport {
   score: number;
   reconciledCount: number;
+  reconciledAttributionsCount: number;
   totalAudited: number;
   details: string[];
 }
@@ -17,6 +18,7 @@ export class DataReconciliationAgent {
   async runReconciliation(): Promise<ReconciliationReport> {
     const details: string[] = [];
     let reconciledCount = 0;
+    let reconciledAttributionsCount = 0;
     let totalAudited = 0;
 
     try {
@@ -30,6 +32,7 @@ export class DataReconciliationAgent {
         return {
           score: 100,
           reconciledCount: 0,
+          reconciledAttributionsCount: 0,
           totalAudited: 0,
           details: ['Tabela de clientes zerada ou indisponível.']
         };
@@ -40,11 +43,12 @@ export class DataReconciliationAgent {
       // 2. Busca todas as compras do cashback_ledger
       const { data: ledgerRows } = await supabase
         .from('cashback_ledger')
-        .select('client_id, created_at, original_amount')
+        .select('client_id, order_id, created_at, original_amount')
         .eq('tenant_id', this.tenantId);
 
       const maxDateMap = new Map<string, string>();
       const totalSpentMap = new Map<string, number>();
+      const uniqueOrdersMap = new Map<string, any>();
 
       if (ledgerRows) {
         ledgerRows.forEach(row => {
@@ -59,10 +63,14 @@ export class DataReconciliationAgent {
           const currentSpent = totalSpentMap.get(row.client_id) || 0;
           const purchaseVal = (Number(row.original_amount) || 0) * 10;
           totalSpentMap.set(row.client_id, currentSpent + purchaseVal);
+
+          if (!uniqueOrdersMap.has(row.order_id)) {
+            uniqueOrdersMap.set(row.order_id, row);
+          }
         });
       }
 
-      // 3. Identifica e reconcilia divergências de datas e Lead Score em segundo plano
+      // 3. Reconciliação de datas de compra e Lead Score
       const now = new Date();
 
       for (const c of clients) {
@@ -76,7 +84,7 @@ export class DataReconciliationAgent {
           const leadScore = Math.min(100, Math.round(recencyScore * 0.6 + Math.min(40, calcSpent / 25)));
 
           reconciledCount++;
-          details.push(`Reconciliado: ${c.name} (Data atualizada para ${new Date(latestLedgerDate).toLocaleDateString('pt-BR')}, Score: ${leadScore})`);
+          details.push(`Data Reconciliada: ${c.name} (${new Date(latestLedgerDate).toLocaleDateString('pt-BR')})`);
 
           await supabase
             .from('clients')
@@ -89,19 +97,74 @@ export class DataReconciliationAgent {
         }
       }
 
-      const score = Math.max(0, 100 - (reconciledCount * 5));
+      // 4. Reconciliação de Atribuição de Conversões (sales_attribution)
+      const { data: interactions } = await supabase
+        .from('client_interactions')
+        .select('id, client_id, created_at')
+        .eq('tenant_id', this.tenantId)
+        .order('created_at', { ascending: false });
+
+      const { data: existingAttributions } = await supabase
+        .from('sales_attribution')
+        .select('order_id')
+        .eq('tenant_id', this.tenantId);
+
+      const existingOrderIds = new Set((existingAttributions || []).map(a => a.order_id));
+
+      if (interactions && interactions.length > 0) {
+        const interactionsByClient = new Map<string, any[]>();
+        interactions.forEach(int => {
+          if (!interactionsByClient.has(int.client_id)) {
+            interactionsByClient.set(int.client_id, []);
+          }
+          interactionsByClient.get(int.client_id)!.push(int);
+        });
+
+        for (const order of uniqueOrdersMap.values()) {
+          if (existingOrderIds.has(order.order_id)) continue;
+
+          const clientInts = interactionsByClient.get(order.client_id);
+          if (!clientInts || clientInts.length === 0) continue;
+
+          const orderTime = new Date(order.created_at).getTime();
+          const validInt = clientInts.find(int => {
+            const intTime = new Date(int.created_at).getTime();
+            const diffDays = (orderTime - intTime) / (1000 * 60 * 60 * 24);
+            return diffDays >= 0 && diffDays <= 30;
+          });
+
+          if (validInt) {
+            reconciledAttributionsCount++;
+            const rev = (Number(order.original_amount) || 0) * 10;
+            details.push(`Conversão Atribuída: Pedido #${order.order_id} (R$ ${rev.toFixed(2)})`);
+
+            await supabase.from('sales_attribution').insert({
+              tenant_id: this.tenantId,
+              interaction_id: validInt.id,
+              order_id: order.order_id,
+              revenue: rev,
+              created_at: order.created_at
+            });
+          }
+        }
+      }
+
+      const totalFixes = reconciledCount + reconciledAttributionsCount;
+      const score = Math.max(0, 100 - (totalFixes * 5));
 
       return {
         score,
         reconciledCount,
+        reconciledAttributionsCount,
         totalAudited,
-        details: details.length > 0 ? details : ['Todos os clientes estão com as datas de compra 100% sincronizadas.']
+        details: details.length > 0 ? details : ['Todas as vendas e conversões estão 100% atribuídas.']
       };
     } catch (err: any) {
-      console.error('Erro na reconciliação de dados pelo agente:', err);
+      console.error('Erro na reconciliação de conversões pelo agente:', err);
       return {
         score: 90,
         reconciledCount,
+        reconciledAttributionsCount,
         totalAudited,
         details: [`Erro durante a execução do agente: ${err.message}`]
       };
