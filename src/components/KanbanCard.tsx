@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Phone, CheckCircle, Clock } from 'lucide-react';
+import { Phone, CheckCircle, Clock, Ban } from 'lucide-react';
 import Link from 'next/link';
 
 interface KanbanCardProps {
@@ -21,7 +21,6 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
   const registerInteraction = async () => {
     if (isLoading) return;
     setIsLoading(true);
-    // Registra a interação no banco (API)
     try {
       await fetch('/api/interactions', {
         method: 'POST',
@@ -34,14 +33,39 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
         })
       });
       
-      router.refresh(); // Força o Next.js a atualizar a rota
+      router.refresh();
       
-      // Oculta o card no Kanban após registrar a conversa
       if (onMessageSent) {
         onMessageSent(client.id);
       }
     } catch (err) {
       console.error('Erro ao registrar interação no WhatsApp:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNotApplicable = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      await fetch('/api/clientes/nao-se-aplica', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: client.id,
+          action: 'ignore',
+          reason: 'Não se aplica ao cliente'
+        })
+      });
+
+      router.refresh();
+
+      if (onMessageSent) {
+        onMessageSent(client.id);
+      }
+    } catch (err) {
+      console.error('Erro ao marcar cliente como não se aplica:', err);
     } finally {
       setIsLoading(false);
     }
@@ -61,7 +85,7 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
         <Link href={`/clientes/${client.id}`} className="font-semibold text-white/90 hover:text-white text-sm truncate pr-2 flex-1 hover:underline">
           {client.name}
         </Link>
-        <div className="flex flex-col items-end">
+        <div className="flex items-center gap-1.5">
           <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
             Score: {client.lead_score}
           </span>
@@ -83,30 +107,42 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
         )}
       </div>
 
-      <div className="flex justify-between items-center border-t border-white/10 pt-3 mt-1">
-        <button 
-          onClick={() => {
-            registerInteraction();
-          }}
+      <div className="flex flex-col gap-2 border-t border-white/10 pt-3 mt-1">
+        <div className="flex justify-between items-center gap-2">
+          <button 
+            onClick={registerInteraction}
+            disabled={isLoading}
+            className={`flex items-center gap-1 text-[11px] font-medium text-white/50 hover:text-white/90 bg-white/5 hover:bg-white/15 px-2 py-1.5 rounded-lg transition-colors flex-1 justify-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title="Marcar como contatado sem abrir o WhatsApp"
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            {isLoading ? 'Salvando...' : 'Já Falei'}
+          </button>
+          
+          <button 
+            onClick={() => {
+              if (!isLoading) {
+                window.open(wppLink, '_blank', 'noopener,noreferrer');
+                registerInteraction();
+              }
+            }}
+            disabled={isLoading}
+            className={`flex items-center gap-1 text-[11px] font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/20 px-2.5 py-1.5 rounded-lg transition-colors flex-1 justify-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <Phone className="w-3.5 h-3.5" />
+            WhatsApp
+          </button>
+        </div>
+
+        {/* Botão Não Se Aplica */}
+        <button
+          onClick={handleNotApplicable}
           disabled={isLoading}
-          className={`flex items-center gap-1.5 text-[11px] font-medium text-white/50 hover:text-white/90 bg-white/5 hover:bg-white/15 px-2.5 py-1.5 rounded-lg transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          title="Marcar como contatado sem abrir o WhatsApp"
+          className="flex items-center justify-center gap-1.5 text-[10px] font-semibold text-rose-400/80 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 py-1 px-2 rounded-md transition-colors w-full border border-rose-500/20"
+          title="Remover este cliente do Kanban de vendas por não se aplicar"
         >
-          <CheckCircle className="w-3.5 h-3.5" />
-          {isLoading ? 'Salvando...' : 'Já Falei'}
-        </button>
-        <button 
-          onClick={() => {
-            if (!isLoading) {
-              window.open(wppLink, '_blank', 'noopener,noreferrer');
-              registerInteraction();
-            }
-          }}
-          disabled={isLoading}
-          className={`flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1.5 rounded-lg transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <Phone className="w-3.5 h-3.5" />
-          WhatsApp
+          <Ban className="w-3 h-3" />
+          <span>Não Se Aplica</span>
         </button>
       </div>
     </div>

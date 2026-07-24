@@ -82,6 +82,11 @@ export function getKanbanColumns(
     const record = lastInteractions[c.id];
     const lastInt = record?.latest;
     const lastPosVenda = record?.latestPosVenda;
+
+    // Regra de Exclusão "Não se Aplica": Se a última ação registrada for NAO_SE_APLICA, o cliente é sumido do Kanban
+    if (lastInt?.campaign === 'NAO_SE_APLICA') {
+      continue;
+    }
     
     let isCooldown = false;
 

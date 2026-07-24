@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target, Bot, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target, Bot, Sparkles, Ban } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 
 export default async function Sidebar() {
@@ -46,6 +46,11 @@ export default async function Sidebar() {
           <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <MessageCircle size={20} className="text-muted-foreground" />
             <span>Mensagens Enviadas</span>
+          </Link>
+
+          <Link href="/dashboard/nao-se-aplica" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+            <Ban size={20} className="text-rose-400" />
+            <span>Não Se Aplica (Ignorados)</span>
           </Link>
 
           {session?.role === 'ADMIN' && (
