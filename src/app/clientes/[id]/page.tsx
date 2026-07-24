@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AiDossier from '@/components/AiDossier';
 import SyncBlingButton from '@/components/SyncBlingButton';
-import RegisterManualSaleModal from '@/components/RegisterManualSaleModal';
 import CashbackLedgerTable from '@/components/CashbackLedgerTable';
 import OrderHistoryTable from '@/components/OrderHistoryTable';
 import { getSession } from '@/lib/auth';
@@ -103,7 +102,6 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
           </div>
           
           <div className="flex items-center gap-3">
-            <RegisterManualSaleModal clientId={client.id} clientName={client.name} />
             <SyncBlingButton clientId={client.id} />
             
             <a 
