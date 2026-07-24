@@ -178,9 +178,22 @@ export class BlingProvider {
       if (!contato || !contato.id) continue;
       
       const blingId = contato.id.toString();
-      const telefone = contactMap.get(blingId);
+      let telefone = contactMap.get(blingId);
       
-      if (!telefone) continue; // Cliente sem celular ignorado
+      if (!telefone) {
+        const rawFone = contato.celular || contato.telefone || contato.fone;
+        if (rawFone) {
+          const cleanFone = rawFone.replace(/\D/g, '');
+          if (cleanFone.length >= 10) {
+            telefone = cleanFone;
+          }
+        }
+      }
+      
+      // Se ainda assim não houver telefone cadastrado no Bling, atribui telefone coringa com o ID do contato
+      if (!telefone) {
+        telefone = `5500${blingId.padStart(8, '0')}`;
+      }
 
       let valorDesconto = 0;
       

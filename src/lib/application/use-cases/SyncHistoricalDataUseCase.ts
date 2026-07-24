@@ -40,8 +40,8 @@ export class SyncHistoricalDataUseCase {
       }
 
       // 2. Lógica de Ledger Histórico
-      // Ignora pedidos que não foram Atendidos (ID 9)
-      if (order.situacao !== 9) {
+      // Ignora apenas pedidos que foram Cancelados (ID 12)
+      if (order.situacao === 12) {
         continue;
       }
 
