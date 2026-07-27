@@ -63,8 +63,17 @@ export default async function AdminDashboardPage() {
     oldClientIds = new Set(oldPurchases?.map(p => p.client_id) || []);
   }
 
-  // 3. Novos clientes são os que estão em recent mas não em old
-  const newClients30d = recentClientIds.filter(id => !oldClientIds.has(id)).length;
+  // 3. Novos clientes são os que estão em recent mas não em old (excluindo alertas de sistema)
+  const newClientsIdsFiltered = recentClientIds.filter(id => !oldClientIds.has(id));
+  let newClients30d = 0;
+  if (newClientsIdsFiltered.length > 0) {
+    const { count: realNewCount } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .in('id', newClientsIdsFiltered)
+      .neq('phone', '00000000000');
+    newClients30d = realNewCount || 0;
+  }
 
   let totalLtv = 0;
   let buyersCount = 0;
