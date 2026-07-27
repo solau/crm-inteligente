@@ -124,14 +124,26 @@ export function getKanbanColumns(
         }
       }
     }
-    // Prioridade 1: Pós Venda (compras realizadas nos últimos 30 dias)
+    if (isCooldown) continue;
+
+    // Prioridade 1: Pós Venda
+    // Regra Exata: Compras nos últimos 7 dias E que NÃO receberam mensagem no mesmo dia/após a compra nem nos últimos 15 dias
     let assignedPosVenda = false;
-    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 30) {
-      // Pós-venda considerado resolvido APENAS se houve atendimento de PÓS_VENDA em data igual ou posterior à última compra
-      const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
-      const isPosVendaResolved = lastPosVenda && new Date(lastPosVenda.date).getTime() >= purchaseTime;
-      
-      if (!isPosVendaResolved) {
+    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
+      let isBlockedPosVenda = false;
+
+      if (lastInt) {
+        const intTime = new Date(lastInt.date).getTime();
+        const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
+        const daysSinceMsg = Math.ceil((today.getTime() - intTime) / (1000 * 60 * 60 * 24));
+
+        // Bloqueado se recebeu mensagem no mesmo dia ou após a compra, OU nos últimos 15 dias
+        if (intTime >= purchaseTime || daysSinceMsg <= 15) {
+          isBlockedPosVenda = true;
+        }
+      }
+
+      if (!isBlockedPosVenda) {
         colPosVenda.push(c);
         assignedPosVenda = true;
       }
