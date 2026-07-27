@@ -28,6 +28,7 @@ export default async function AdminDashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+  const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
 
   // 1. Busca TODOS os clientes com paginação (superando limite de 1000 linhas)
   let allClients: any[] = [];
@@ -51,34 +52,53 @@ export default async function AdminDashboardPage() {
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
-  
-  // Para calcular novos clientes REAIS (primeira compra nos últimos 30 dias):
-  const { data: recentPurchases } = await supabase
-    .from('cashback_ledger')
-    .select('client_id')
-    .gte('created_at', thirtyDaysAgoStr);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-  const recentClientIds = Array.from(new Set(recentPurchases?.map(p => p.client_id) || []));
+  // Busca histórico de compras com paginação para determinar a primeira compra real de cada cliente
+  let allLedger: any[] = [];
+  from = 0;
+  fetching = true;
 
-  let oldClientIds = new Set();
-  if (recentClientIds.length > 0) {
-    const { data: oldPurchases } = await supabase
+  while (fetching) {
+    const { data: rows } = await supabase
       .from('cashback_ledger')
-      .select('client_id')
-      .in('client_id', recentClientIds)
-      .lt('created_at', thirtyDaysAgoStr);
-    
-    oldClientIds = new Set(oldPurchases?.map(p => p.client_id) || []);
+      .select('client_id, created_at')
+      .eq('tenant_id', tenantId)
+      .range(from, from + 999);
+
+    if (!rows || rows.length === 0) {
+      fetching = false;
+    } else {
+      allLedger.push(...rows);
+      from += 1000;
+      if (rows.length < 1000) fetching = false;
+    }
   }
 
-  const newClientsIdsFiltered = recentClientIds.filter(id => !oldClientIds.has(id));
+  const firstPurchaseMap = new Map<string, string>();
+  for (const row of allLedger) {
+    if (!row.client_id) continue;
+    const currentMin = firstPurchaseMap.get(row.client_id);
+    const time = new Date(row.created_at).getTime();
+
+    if (!currentMin || time < new Date(currentMin).getTime()) {
+      firstPurchaseMap.set(row.client_id, row.created_at);
+    }
+  }
+
+  const realNewClientIds: string[] = [];
+  for (const [clientId, firstDateStr] of firstPurchaseMap.entries()) {
+    if (new Date(firstDateStr).getTime() >= thirtyDaysAgo.getTime()) {
+      realNewClientIds.push(clientId);
+    }
+  }
+
   let newClients30d = 0;
-  if (newClientsIdsFiltered.length > 0) {
+  if (realNewClientIds.length > 0) {
     const { count: realNewCount } = await supabase
       .from('clients')
       .select('id', { count: 'exact', head: true })
-      .in('id', newClientsIdsFiltered)
+      .in('id', realNewClientIds)
       .neq('phone', '00000000000');
     newClients30d = realNewCount || 0;
   }
