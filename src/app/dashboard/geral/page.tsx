@@ -87,17 +87,24 @@ export default async function AdminDashboardPage() {
   let buyersCount = 0;
   let totalHealthScore = 0;
 
+  let ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  let recentBuyersCount = 0;
+
   for (const c of allClients) {
     const spent = Number(c.total_spent) || 0;
     if (spent > 0 && c.phone !== '00000000000') {
       totalLtv += spent;
       buyersCount++;
-      totalHealthScore += Number(c.lead_score || 0);
+      if (c.last_purchase_date && new Date(c.last_purchase_date) >= ninetyDaysAgo) {
+        totalHealthScore += Number(c.lead_score || 0);
+        recentBuyersCount++;
+      }
     }
   }
 
   const avgLTV = buyersCount > 0 ? totalLtv / buyersCount : 0;
-  const avgHealth = buyersCount > 0 ? (totalHealthScore / buyersCount).toFixed(0) : '0';
+  const avgHealth = recentBuyersCount > 0 ? (totalHealthScore / recentBuyersCount).toFixed(0) : '0';
 
   // 2. Ranking Top 5 Clientes
   const { data: topClients } = await supabase
@@ -206,7 +213,7 @@ export default async function AdminDashboardPage() {
               <Activity className="text-rose-400 opacity-80" size={20} />
             </div>
             <h2 className="text-3xl font-bold mt-2 relative z-10">{avgHealth} <span className="text-sm text-muted-foreground font-normal">/ 100</span></h2>
-            <p className="text-xs text-muted-foreground mt-1 relative z-10">Média dos compradores</p>
+            <p className="text-xs text-muted-foreground mt-1 relative z-10">Compradores ativos (90d)</p>
             
             {/* Background decoration */}
             <div className="absolute -bottom-4 -right-4 text-rose-500/5">
