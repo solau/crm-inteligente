@@ -102,12 +102,11 @@ export async function POST(req: Request) {
           tenant_id: tenantId,
           client_id: clientId,
           campaign_type: 'NAO_SE_APLICA',
-          channel: 'SYSTEM',
-          status: 'DELIVERED',
           user_id: session?.id || null
         });
 
       if (error) {
+        console.error('Erro ao inserir NAO_SE_APLICA:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
