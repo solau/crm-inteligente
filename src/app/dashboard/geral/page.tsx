@@ -92,12 +92,12 @@ export default async function AdminDashboardPage() {
     if (spent > 0 && c.phone !== '00000000000') {
       totalLtv += spent;
       buyersCount++;
+      totalHealthScore += Number(c.lead_score || 0);
     }
-    totalHealthScore += Number(c.lead_score || 0);
   }
 
   const avgLTV = buyersCount > 0 ? totalLtv / buyersCount : 0;
-  const avgHealth = allClients.length > 0 ? (totalHealthScore / allClients.length).toFixed(0) : '0';
+  const avgHealth = buyersCount > 0 ? (totalHealthScore / buyersCount).toFixed(0) : '0';
 
   // 2. Ranking Top 5 Clientes
   const { data: topClients } = await supabase
@@ -206,7 +206,7 @@ export default async function AdminDashboardPage() {
               <Activity className="text-rose-400 opacity-80" size={20} />
             </div>
             <h2 className="text-3xl font-bold mt-2 relative z-10">{avgHealth} <span className="text-sm text-muted-foreground font-normal">/ 100</span></h2>
-            <p className="text-xs text-muted-foreground mt-1 relative z-10">Média global</p>
+            <p className="text-xs text-muted-foreground mt-1 relative z-10">Média dos compradores</p>
             
             {/* Background decoration */}
             <div className="absolute -bottom-4 -right-4 text-rose-500/5">
