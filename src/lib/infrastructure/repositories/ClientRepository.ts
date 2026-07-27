@@ -56,6 +56,19 @@ export class ClientRepository {
     }
   }
 
+  async getClientByBlingId(blingId: string): Promise<ClientData | null> {
+    if (!blingId) return null;
+    const { data, error } = await supabaseAdmin
+      .from('clients')
+      .select('*')
+      .eq('bling_id', blingId)
+      .eq('tenant_id', this.tenantId)
+      .single();
+
+    if (error || !data) return null;
+    return data as ClientData;
+  }
+
   async getClientByPhone(phone: string): Promise<ClientData | null> {
     const { data, error } = await supabaseAdmin
       .from('clients')

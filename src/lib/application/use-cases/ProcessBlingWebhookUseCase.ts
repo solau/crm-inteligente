@@ -111,14 +111,23 @@ export class ProcessBlingWebhookUseCase {
       }
     }
 
-    // 2. Busca ou Cria Cliente Real
-    let cliente = await this.clientRepository.getClientByPhone(foneClienteReal!);
+    // 2. Busca ou Cria Cliente Real (Priorizando Bling ID para evitar troca de clientes com nomes parecidos)
+    const contactBlingId = fullOrder.contato?.id?.toString() || payload?.pedido?.cliente?.id?.toString();
+    let cliente: any = null;
+
+    if (contactBlingId) {
+      cliente = await this.clientRepository.getClientByBlingId(contactBlingId);
+    }
+
+    if (!cliente && foneClienteReal) {
+      cliente = await this.clientRepository.getClientByPhone(foneClienteReal);
+    }
     
     if (!cliente) {
       cliente = await this.clientRepository.upsertClientByPhone({
         name: nomeCliente,
         phone: foneClienteReal!,
-        bling_id: fullOrder.contato?.id?.toString() || payload?.pedido?.cliente?.id?.toString(),
+        bling_id: contactBlingId,
         cashback_balance: 0,
         lead_score: 0,
         tenant_id: tenantId,
