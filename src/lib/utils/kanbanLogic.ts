@@ -135,8 +135,9 @@ export function getKanbanColumns(
         const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
         const daysSinceInt = Math.ceil((today.getTime() - new Date(lastInt.date).getTime()) / (1000 * 60 * 60 * 24));
 
-        // Bloqueado apenas se mandou mensagem HOJE ou se JÁ HOUVE atendimento/mensagem no mesmo dia ou APÓS a compra
-        if (daysSinceInt <= 0 || intTime >= purchaseTime) {
+        // Bloqueado se mandou mensagem HOJE, se houve mensagem no dia/após a compra, OU se já recebeu POS_VENDA nos últimos 15 dias
+        const isPosVendaInLast15Days = lastInt.campaign === 'POS_VENDA' && daysSinceInt <= 15;
+        if (daysSinceInt <= 0 || intTime >= purchaseTime || isPosVendaInLast15Days) {
           isBlockedPosVenda = true;
         }
       }
