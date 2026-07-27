@@ -130,14 +130,8 @@ export class DataReconciliationAgent {
           const validInt = clientInts.find(int => {
             const intTime = new Date(int.created_at).getTime();
             const diffDays = (orderTime - intTime) / (1000 * 60 * 60 * 24);
-            
-            // Interação ocorrida até 30 dias ANTES da compra
-            if (diffDays >= 0 && diffDays <= 30) return true;
-            
-            // Atendimento de Pós-venda ocorrido até 14 dias APÓS a compra
-            if (diffDays < 0 && Math.abs(diffDays) <= 14) return true;
-            
-            return false;
+            // Regra Estrita: A mensagem DEVE ter sido enviada ANTES ou no dia da compra (diffDays >= 0) e em até 30 dias (diffDays <= 30)
+            return diffDays >= 0 && diffDays <= 30;
           });
 
           if (validInt) {
