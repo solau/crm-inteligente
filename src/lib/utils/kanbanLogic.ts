@@ -124,21 +124,14 @@ export function getKanbanColumns(
         }
       }
     }
-    // Prioridade 1: Pós Venda
+    // Prioridade 1: Pós Venda (compras realizadas nos últimos 30 dias)
     let assignedPosVenda = false;
-    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
-      // Regra de Trava de Pós-Venda (30 dias)
-      let receivedPosVendaRecently = false;
-      if (lastPosVenda) {
-        const daysSincePosVenda = Math.ceil((today.getTime() - new Date(lastPosVenda.date).getTime()) / (1000 * 60 * 60 * 24));
-        if (daysSincePosVenda <= 30) {
-          receivedPosVendaRecently = true;
-        }
-      }
+    if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 30) {
+      // Pós-venda considerado resolvido APENAS se houve atendimento de PÓS_VENDA em data igual ou posterior à última compra
+      const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
+      const isPosVendaResolved = lastPosVenda && new Date(lastPosVenda.date).getTime() >= purchaseTime;
       
-      const isPosVendaResolved = lastInt?.campaign === 'POS_VENDA' && new Date(lastInt.date).getTime() >= new Date(c.last_purchase_date!).getTime();
-      
-      if (!isPosVendaResolved && !receivedPosVendaRecently) {
+      if (!isPosVendaResolved) {
         colPosVenda.push(c);
         assignedPosVenda = true;
       }
