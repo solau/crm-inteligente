@@ -124,10 +124,8 @@ export function getKanbanColumns(
         }
       }
     }
-    if (isCooldown) continue;
-
     // Prioridade 1: Pós Venda
-    // Regra Exata: Compras nos últimos 7 dias E que NÃO receberam mensagem no mesmo dia/após a compra nem nos últimos 15 dias
+    // Regra Exata: Compras nos últimos 7 dias que ainda NÃO foram atendidas pós-compra (mensagem no mesmo dia ou após a compra) nem enviada mensagem HOJE
     let assignedPosVenda = false;
     if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
       let isBlockedPosVenda = false;
@@ -135,10 +133,10 @@ export function getKanbanColumns(
       if (lastInt) {
         const intTime = new Date(lastInt.date).getTime();
         const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
-        const daysSinceMsg = Math.ceil((today.getTime() - intTime) / (1000 * 60 * 60 * 24));
+        const daysSinceInt = Math.ceil((today.getTime() - new Date(lastInt.date).getTime()) / (1000 * 60 * 60 * 24));
 
-        // Bloqueado se recebeu mensagem no mesmo dia ou após a compra, OU nos últimos 15 dias
-        if (intTime >= purchaseTime || daysSinceMsg <= 15) {
+        // Bloqueado apenas se mandou mensagem HOJE ou se JÁ HOUVE atendimento/mensagem no mesmo dia ou APÓS a compra
+        if (daysSinceInt <= 0 || intTime >= purchaseTime) {
           isBlockedPosVenda = true;
         }
       }
@@ -151,6 +149,7 @@ export function getKanbanColumns(
 
     if (assignedPosVenda) continue;
 
+    // Para as demais colunas (Cashback, Ausentes), aplica o Cooldown geral
     if (isCooldown) continue;
 
     // Prioridade 2: Cashback
