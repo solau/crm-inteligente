@@ -29,21 +29,31 @@ export default async function AdminDashboardPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // 1. Total Histórico e LTV Médio e Saúde
-  const { data: clientsData } = await supabase
-    .from('clients')
-    .select('id, created_at, total_spent, lead_score');
+  // 1. Busca TODOS os clientes com paginação (superando limite de 1000 linhas)
+  let allClients: any[] = [];
+  let from = 0;
+  let fetching = true;
 
-  const { count: totalClients } = await supabase
-    .from('clients')
-    .select('id', { count: 'exact', head: true });
+  while (fetching) {
+    const { data: rows } = await supabase
+      .from('clients')
+      .select('id, created_at, total_spent, lead_score, phone')
+      .range(from, from + 999);
+
+    if (!rows || rows.length === 0) {
+      fetching = false;
+    } else {
+      allClients.push(...rows);
+      from += 1000;
+      if (rows.length < 1000) fetching = false;
+    }
+  }
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
   
   // Para calcular novos clientes REAIS (primeira compra nos últimos 30 dias):
-  // 1. Pega todos que compraram nos últimos 30 dias
   const { data: recentPurchases } = await supabase
     .from('cashback_ledger')
     .select('client_id')
@@ -51,7 +61,6 @@ export default async function AdminDashboardPage() {
 
   const recentClientIds = Array.from(new Set(recentPurchases?.map(p => p.client_id) || []));
 
-  // 2. Verifica quais desses já tinham comprado antes dos 30 dias
   let oldClientIds = new Set();
   if (recentClientIds.length > 0) {
     const { data: oldPurchases } = await supabase
@@ -63,7 +72,6 @@ export default async function AdminDashboardPage() {
     oldClientIds = new Set(oldPurchases?.map(p => p.client_id) || []);
   }
 
-  // 3. Novos clientes são os que estão em recent mas não em old (excluindo alertas de sistema)
   const newClientsIdsFiltered = recentClientIds.filter(id => !oldClientIds.has(id));
   let newClients30d = 0;
   if (newClientsIdsFiltered.length > 0) {
@@ -79,18 +87,17 @@ export default async function AdminDashboardPage() {
   let buyersCount = 0;
   let totalHealthScore = 0;
 
-  if (clientsData) {
-    for (const c of clientsData) {
-      if (c.total_spent > 0) {
-        totalLtv += Number(c.total_spent);
-        buyersCount++;
-      }
-      totalHealthScore += Number(c.lead_score || 0);
+  for (const c of allClients) {
+    const spent = Number(c.total_spent) || 0;
+    if (spent > 0 && c.phone !== '00000000000') {
+      totalLtv += spent;
+      buyersCount++;
     }
+    totalHealthScore += Number(c.lead_score || 0);
   }
 
   const avgLTV = buyersCount > 0 ? totalLtv / buyersCount : 0;
-  const avgHealth = (totalClients || 0) > 0 ? (totalHealthScore / (totalClients || 1)).toFixed(0) : '0';
+  const avgHealth = allClients.length > 0 ? (totalHealthScore / allClients.length).toFixed(0) : '0';
 
   // 2. Ranking Top 5 Clientes
   const { data: topClients } = await supabase
@@ -186,11 +193,11 @@ export default async function AdminDashboardPage() {
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Base Histórica</p>
+              <p className="text-sm font-medium text-muted-foreground">Compradores Reais</p>
               <Users className="text-blue-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{totalClients || 0}</h2>
-            <p className="text-xs text-muted-foreground mt-1">Total de cadastros</p>
+            <h2 className="text-3xl font-bold mt-2">{buyersCount || 0}</h2>
+            <p className="text-xs text-muted-foreground mt-1">Base ativa com vendas</p>
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors relative overflow-hidden">
