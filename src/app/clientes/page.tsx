@@ -9,7 +9,7 @@ export default async function ClientesPage({
 }) {
   const resolvedParams = await searchParams;
   const q = resolvedParams?.q || '';
-  const filter = resolvedParams?.filter || 'expirando'; // Default é expirando agora
+  const filter = resolvedParams?.filter || 'todos'; // Default é Todos
   const currentPage = Math.max(1, parseInt(resolvedParams?.p || '1', 10));
   const ITEMS_PER_PAGE = 20;
   const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
@@ -18,7 +18,9 @@ export default async function ClientesPage({
   let countQuery = supabaseAdmin
     .from('vw_client_radar')
     .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .gt('total_spent', 0)
+    .neq('phone', '00000000000');
 
   // Filtros aplicados na contagem
   if (q) {
@@ -47,7 +49,9 @@ export default async function ClientesPage({
   let query = supabaseAdmin
     .from('vw_client_radar')
     .select('*')
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .gt('total_spent', 0)
+    .neq('phone', '00000000000');
 
   // Mesmos filtros
   if (q) {
