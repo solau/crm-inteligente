@@ -220,8 +220,14 @@ export function getKanbanColumns(
   col10d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
   col15d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
   
-  col45d.sort((a, b) => new Date(b.last_purchase_date!).getTime() - new Date(a.last_purchase_date!).getTime());
-  col90d.sort((a, b) => new Date(a.last_purchase_date!).getTime() - new Date(b.last_purchase_date!).getTime());
+  col45d.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
+  col90d.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
+
+  // Limita colunas de ausentes a 100 clientes mais relevantes (lead_score DESC)
+  // Colunas maiores tornam o Kanban inutilizável e escondem clientes importantes
+  const MAX_ABSENT = 100;
+  const col45dLimited = col45d.slice(0, MAX_ABSENT);
+  const col90dLimited = col90d.slice(0, MAX_ABSENT);
 
   return {
     colPosVenda,
@@ -229,8 +235,8 @@ export function getKanbanColumns(
     col5d,
     col10d,
     col15d,
-    col45d,
-    col90d
+    col45d: col45dLimited,
+    col90d: col90dLimited
   };
 }
 

@@ -160,6 +160,19 @@ export class ProcessBlingWebhookUseCase {
       saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
     }
 
+    // CRÍTICO: Atualiza last_purchase_date SEMPRE para qualquer pedido válido.
+    // Isso garante que o cliente apareça no Pós-Venda mesmo que o cashback já tenha sido processado.
+    // Deve ocorrer ANTES da verificação de idempotência para evitar data desatualizada.
+    const saleDate = new Date(saleDateStr);
+    const currentLastPurchase = cliente.last_purchase_date ? new Date(cliente.last_purchase_date) : null;
+    if (!currentLastPurchase || saleDate > currentLastPurchase) {
+      await this.clientRepository.updateClient(cliente.id!, {
+        last_purchase_date: saleDateStr
+      });
+      // Atualiza a referência local para as operações seguintes
+      cliente.last_purchase_date = saleDateStr;
+    }
+
     if (this.interactionRepository) {
       const attributionExists = await this.interactionRepository.checkAttributionExists(orderId);
       if (!attributionExists) {
@@ -178,9 +191,10 @@ export class ProcessBlingWebhookUseCase {
     }
 
     // Validação de Idempotência: Checa se este pedido já gerou cashback/RFM
+    // (last_purchase_date já foi atualizado acima, independente disso)
     const orderAlreadyProcessed = await this.cashbackRepository.checkOrderExists(orderId);
     if (orderAlreadyProcessed) {
-      console.log(`Webhook Abortado: Pedido ${orderId} já processado anteriormente.`);
+      console.log(`Webhook: Pedido ${orderId} já processado para cashback/RFM, mas last_purchase_date foi atualizado.`);
       return true;
     }
 
