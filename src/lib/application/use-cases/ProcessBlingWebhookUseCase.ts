@@ -162,9 +162,9 @@ export class ProcessBlingWebhookUseCase {
     // CRÍTICO: Atualiza last_purchase_date SEMPRE para qualquer pedido válido.
     // Isso garante que o cliente apareça no Pós-Venda mesmo que o cashback já tenha sido processado.
     // Deve ocorrer ANTES da verificação de idempotência para evitar data desatualizada.
-    const saleDate = new Date(saleDateStr);
+    const saleDateObj = isNaN(new Date(saleDateStr).getTime()) ? new Date() : new Date(saleDateStr);
     const currentLastPurchase = cliente.last_purchase_date ? new Date(cliente.last_purchase_date) : null;
-    if (!currentLastPurchase || saleDate > currentLastPurchase) {
+    if (!currentLastPurchase || isNaN(currentLastPurchase.getTime()) || saleDateObj > currentLastPurchase) {
       await this.clientRepository.updateClient(cliente.id!, {
         last_purchase_date: saleDateStr
       });
@@ -230,10 +230,10 @@ export class ProcessBlingWebhookUseCase {
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)
     const valorGerado = valorPagoReal * 0.10;
-    const saleDate = new Date(saleDateStr);
-    const activeAt = new Date(saleDate);
-    activeAt.setDate(activeAt.getDate() + 1); // Alterado de 7 para 1
-    const expiresAt = new Date(saleDate);
+    const saleDateObj = isNaN(new Date(saleDateStr).getTime()) ? new Date() : new Date(saleDateStr);
+    const activeAt = new Date(saleDateObj.getTime());
+    activeAt.setDate(activeAt.getDate() + 1);
+    const expiresAt = new Date(saleDateObj.getTime());
     expiresAt.setDate(expiresAt.getDate() + 45);
 
     await this.cashbackRepository.addCashback({
