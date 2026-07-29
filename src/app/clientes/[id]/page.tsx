@@ -10,6 +10,8 @@ import CashbackLedgerTable from '@/components/CashbackLedgerTable';
 import OrderHistoryTable from '@/components/OrderHistoryTable';
 import { getSession } from '@/lib/auth';
 
+export const revalidate = 0;
+
 export default async function ClienteDetalhes({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
@@ -104,7 +106,7 @@ export default async function ClienteDetalhes({ params }: { params: Promise<{ id
     intervaloMedioDias = Math.round(diferencaDias / (sortedOrders.length - 1));
   }
   
-  const saldoAtivo = ledger.filter(l => l.status === 'ATIVO').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
+  const saldoAtivo = Number(client.cashback_balance) || 0;
   const saldoPendente = ledger.filter(l => l.status === 'PENDENTE').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
   const saldoExpirado = ledger.filter(l => l.status === 'EXPIRADO' && l.expires_at && l.expires_at >= '2026-07-09').reduce((sum, l) => sum + Number(l.remaining_amount), 0);
 
