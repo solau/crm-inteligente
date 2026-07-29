@@ -230,7 +230,6 @@ export class ProcessBlingWebhookUseCase {
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)
     const valorGerado = valorPagoReal * 0.10;
-    const saleDateObj = isNaN(new Date(saleDateStr).getTime()) ? new Date() : new Date(saleDateStr);
     const activeAt = new Date(saleDateObj.getTime());
     activeAt.setDate(activeAt.getDate() + 1);
     const expiresAt = new Date(saleDateObj.getTime());
