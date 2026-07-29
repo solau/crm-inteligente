@@ -130,18 +130,28 @@ export function getKanbanColumns(
       }
     }
     // Prioridade 1: Pós Venda
-    // Regra Exata: Compras nos últimos 7 dias que ainda NÃO foram atendidas pós-compra (mensagem no mesmo dia ou após a compra) nem enviada mensagem HOJE
+    // Regra: Compras nos últimos 7 dias que ainda NÃO receberam POS_VENDA após a compra, e nenhuma mensagem HOJE.
     let assignedPosVenda = false;
     if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
       let isBlockedPosVenda = false;
 
+      // Bloqueia se mandou qualquer mensagem HOJE (daysSinceInt == 0)
       if (lastInt) {
-        const intTime = new Date(lastInt.date).getTime();
-        const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
-        const daysSinceInt = Math.ceil((today.getTime() - new Date(lastInt.date).getTime()) / (1000 * 60 * 60 * 24));
+        const intDate = parseSafeDate(lastInt.date);
+        let daysSinceInt = 0;
+        if (intDate) {
+          daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+        }
+        if (daysSinceInt <= 0) {
+          isBlockedPosVenda = true;
+        }
+      }
 
-        // Bloqueado se mandou mensagem HOJE ou se houve mensagem no dia/após a compra
-        if (daysSinceInt <= 0 || intTime >= purchaseTime) {
+      // Bloqueia se já recebeu POS_VENDA APÓS a data da compra (comparação somente por dia, sem hora)
+      if (!isBlockedPosVenda && record?.latestPosVenda) {
+        const posVendaDay = parseSafeDate(record.latestPosVenda.date);
+        const purchaseDay = parseSafeDate(c.last_purchase_date);
+        if (posVendaDay && purchaseDay && posVendaDay.getTime() >= purchaseDay.getTime()) {
           isBlockedPosVenda = true;
         }
       }

@@ -140,4 +140,56 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.col45d.map(c => c.id)).toContain('1');
   });
 
+  test('Pós-Venda: Interação de CASHBACK no mesmo dia da compra NÃO deve bloquear POS_VENDA', () => {
+    // Vendedor mandou cashback/qualquer coisa no mesmo dia da compra, mas não o POS_VENDA
+    // Cliente ainda precisa receber o pós-venda
+    const purchaseDate = createDate(-2);
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: purchaseDate, campaign: 'CASHBACK_15D' }, latestPosVenda: null }
+    };
+    const client = { ...baseClient, last_purchase_date: purchaseDate };
+    const result = getKanbanColumns([client], interactions, new Set());
+    // Comprou há 2 dias, só recebeu CASHBACK, não POS_VENDA → DEVE aparecer no Pós-Venda
+    expect(result.colPosVenda.map(c => c.id)).toContain('1');
+  });
+
+  test('Pós-Venda: Interação de CASHBACK após a compra NÃO deve bloquear POS_VENDA', () => {
+    // Vendedor mandou cashback 1 dia depois da compra, cliente nunca recebeu pós-venda
+    const purchaseDate = createDate(-3);
+    const cashbackDate = createDate(-2); // dia seguinte à compra
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: cashbackDate, campaign: 'CASHBACK_1D' }, latestPosVenda: null }
+    };
+    const client = { ...baseClient, last_purchase_date: purchaseDate };
+    const result = getKanbanColumns([client], interactions, new Set());
+    // Nunca recebeu POS_VENDA → DEVE aparecer
+    expect(result.colPosVenda.map(c => c.id)).toContain('1');
+  });
+
+  test('Pós-Venda: POS_VENDA antes da compra mais recente NÃO bloqueia (nova compra = novo pós-venda)', () => {
+    // Recebeu POS_VENDA há 5 dias, depois comprou de novo há 1 dia
+    const posVendaDate = createDate(-5);
+    const newPurchaseDate = createDate(-1);
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: posVendaDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: posVendaDate, campaign: 'POS_VENDA' } }
+    };
+    const client = { ...baseClient, last_purchase_date: newPurchaseDate };
+    const result = getKanbanColumns([client], interactions, new Set());
+    // Comprou de novo após o POS_VENDA → DEVE aparecer para novo POS_VENDA
+    expect(result.colPosVenda.map(c => c.id)).toContain('1');
+  });
+
+  test('Pós-Venda: POS_VENDA após a compra bloqueia corretamente', () => {
+    // Recebeu POS_VENDA ontem, comprou há 3 dias → já atendido
+    const purchaseDate = createDate(-3);
+    const posVendaDate = createDate(-1);
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: posVendaDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: posVendaDate, campaign: 'POS_VENDA' } }
+    };
+    const client = { ...baseClient, last_purchase_date: purchaseDate };
+    const result = getKanbanColumns([client], interactions, new Set());
+    // Já recebeu POS_VENDA após a compra → NÃO deve aparecer
+    expect(result.colPosVenda.map(c => c.id)).not.toContain('1');
+  });
+
 });
