@@ -86,9 +86,7 @@ export class CashbackRepository {
           .from('cashback_ledger')
           .update({
             remaining_amount: 0,
-            status: 'UTILIZADO',
-            used_on_order_id: orderId,
-            used_at: new Date().toISOString()
+            status: 'UTILIZADO'
           })
           .eq('id', cashback.id);
         
@@ -99,9 +97,7 @@ export class CashbackRepository {
         await supabaseAdmin
           .from('cashback_ledger')
           .update({
-            remaining_amount: newRemaining,
-            used_on_order_id: orderId,
-            used_at: new Date().toISOString()
+            remaining_amount: newRemaining
           })
           .eq('id', cashback.id);
         
