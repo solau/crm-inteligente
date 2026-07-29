@@ -92,9 +92,12 @@ export function getKanbanColumns(
 
     // Lógica de Cooldown Baseada na Última Interação
     if (lastInt) {
-      const intDate = new Date(lastInt.date);
-      intDate.setHours(0, 0, 0, 0);
-      const daysSinceInt = Math.ceil((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+      const intDate = parseSafeDate(lastInt.date);
+      let daysSinceInt = 0;
+      if (intDate) {
+        const diffTime = today.getTime() - intDate.getTime();
+        daysSinceInt = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      }
       
       const camp = lastInt.campaign;
       
@@ -103,22 +106,24 @@ export function getKanbanColumns(
         isCooldown = true;
       } else {
         if (camp === 'CASHBACK_15D') {
-          if (daysToExpire !== null && daysToExpire > 5) {
+          if (c.has_active && daysToExpire !== null && daysToExpire > 5) {
             isCooldown = true;
           }
         } else if (camp === 'CASHBACK_10D') {
-          if (daysToExpire !== null && daysToExpire > 1) {
+          if (c.has_active && daysToExpire !== null && daysToExpire > 1) {
             isCooldown = true;
           }
         } else if (camp === 'CASHBACK_5D') {
-          if (daysToExpire !== null && daysToExpire > 1) {
+          if (c.has_active && daysToExpire !== null && daysToExpire > 1) {
             isCooldown = true;
           }
         } else if (camp === 'CASHBACK_1D') {
-          // Se já falou no último dia, não precisa falar de novo no dia seguinte antes de expirar
-          isCooldown = true;
+          if (c.has_active && daysSinceInt < 1) {
+            isCooldown = true;
+          }
         } else if (camp === 'AUSENTE_45D' || camp === 'OFERTA_90D') {
-          if (daysSinceInt <= 15) {
+          // Cooldown de 15 dias: dias 0 a 14. No 15º dia (daysSinceInt >= 15), o cliente fica LIBERADO.
+          if (daysSinceInt < 15) {
             isCooldown = true;
           }
         }
@@ -135,9 +140,8 @@ export function getKanbanColumns(
         const purchaseTime = c.last_purchase_date ? parseSafeDate(c.last_purchase_date)?.getTime() || 0 : 0;
         const daysSinceInt = Math.ceil((today.getTime() - new Date(lastInt.date).getTime()) / (1000 * 60 * 60 * 24));
 
-        // Bloqueado se mandou mensagem HOJE, se houve mensagem no dia/após a compra, OU se já recebeu POS_VENDA nos últimos 15 dias
-        const isPosVendaInLast15Days = lastInt.campaign === 'POS_VENDA' && daysSinceInt <= 15;
-        if (daysSinceInt <= 0 || intTime >= purchaseTime || isPosVendaInLast15Days) {
+        // Bloqueado se mandou mensagem HOJE ou se houve mensagem no dia/após a compra
+        if (daysSinceInt <= 0 || intTime >= purchaseTime) {
           isBlockedPosVenda = true;
         }
       }

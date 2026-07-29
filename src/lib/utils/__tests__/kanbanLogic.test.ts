@@ -3,6 +3,7 @@ import { getKanbanColumns, KanbanClient, ClientInteractions } from '../kanbanLog
 describe('Kanban Logic - Cooldown and Priority Rules', () => {
   const baseClient: KanbanClient = {
     id: '1',
+    phone: '71999880315',
     next_expire_date: null,
     last_purchase_date: null,
     has_active: false
@@ -105,6 +106,38 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     const client1d = { ...baseClient, has_active: true, next_expire_date: createDate(1) };
     const result = getKanbanColumns([client1d], interactions, new Set());
     expect(result.col1d).toHaveLength(0);
+  });
+
+  test('Regra Ausentes: Mensagem enviada há exatos 15 dias libera o cliente no Kanban (cooldown encerra no 15º dia)', () => {
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-15), campaign: 'OFERTA_90D' }, latestPosVenda: null },
+      '2': { latest: { date: createDate(-15), campaign: 'AUSENTE_45D' }, latestPosVenda: null },
+      '3': { latest: { date: createDate(-14), campaign: 'OFERTA_90D' }, latestPosVenda: null }
+    };
+
+    const client90d = { ...baseClient, id: '1', phone: '71999880315', last_purchase_date: createDate(-100) };
+    const client45d = { ...baseClient, id: '2', phone: '71999565604', last_purchase_date: createDate(-60) };
+    const clientBlocked = { ...baseClient, id: '3', phone: '71999999999', last_purchase_date: createDate(-100) };
+
+    const result = getKanbanColumns([client90d, client45d, clientBlocked], interactions, new Set());
+    
+    // Cliente 1 (há 15 dias) DEVE aparecer na col90d (Liberado!)
+    expect(result.col90d.map(c => c.id)).toContain('1');
+    // Cliente 2 (há 15 dias) DEVE aparecer na col45d (Liberado!)
+    expect(result.col45d.map(c => c.id)).toContain('2');
+    // Cliente 3 (há 14 dias) AINDA DEVE estar bloqueado
+    expect(result.col90d.map(c => c.id)).not.toContain('3');
+  });
+
+  test('Regra Cashback Expirado: Cashback sem saldo ativo não bloqueia ausente 45d/90d', () => {
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-5), campaign: 'CASHBACK_1D' }, latestPosVenda: null }
+    };
+
+    // Cliente comprou há 60 dias, teve cashback expirado há 5 dias
+    const client = { ...baseClient, id: '1', phone: '71999880315', has_active: false, last_purchase_date: createDate(-60) };
+    const result = getKanbanColumns([client], interactions, new Set());
+    expect(result.col45d.map(c => c.id)).toContain('1');
   });
 
 });
