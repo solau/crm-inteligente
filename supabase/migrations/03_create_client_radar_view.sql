@@ -2,6 +2,7 @@
 CREATE OR REPLACE VIEW vw_client_radar AS
 SELECT 
     c.id, c.tenant_id, c.name, c.phone, c.lead_score, c.cashback_balance, c.last_purchase_date,
+    c.total_spent,
     (SELECT min(expires_at) FROM cashback_ledger l WHERE l.client_id = c.id AND l.status = 'ATIVO' AND l.remaining_amount > 0) as next_expire_date,
     (SELECT max(expires_at) FROM cashback_ledger l WHERE l.client_id = c.id AND l.status = 'EXPIRADO' AND l.expires_at >= '2026-07-09') as last_expired_date,
     COALESCE((SELECT SUM(remaining_amount) FROM cashback_ledger l WHERE l.client_id = c.id AND l.status = 'EXPIRADO' AND l.expires_at >= '2026-07-09'), 0) as total_expired_amount,
