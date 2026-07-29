@@ -36,17 +36,30 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colPosVenda).toHaveLength(0);
   });
 
-  test('DEVE colocar em POS_VENDA se houve nova compra APÓS o último contato', () => {
-    const interactionDate = createDate(-5); // Contatado há 5 dias
-    const purchaseDate = createDate(-1);    // Comprou de novo ontem
-    const client = { ...baseClient, last_purchase_date: purchaseDate };
-    
+  test('NÃO deve aparecer em POS_VENDA se recebeu POS_VENDA nos últimos 15 dias (cooldown absoluto)', () => {
+    // Caso Andreza Blena: recebeu POS_VENDA há 8 dias, depois comprou de novo há 3 dias.
+    // Cooldown de 15d ainda não expirou → NÃO deve aparecer
+    const posVendaDate = createDate(-8);
+    const newPurchaseDate = createDate(-3);
+    const client = { ...baseClient, last_purchase_date: newPurchaseDate };
     const interactions: Record<string, ClientInteractions> = {
-      '1': { latest: { date: interactionDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: interactionDate, campaign: 'POS_VENDA' } }
+      '1': { latest: { date: posVendaDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: posVendaDate, campaign: 'POS_VENDA' } }
     };
-
     const result = getKanbanColumns([client], interactions, new Set());
-    expect(result.colPosVenda).toHaveLength(1);
+    // Cooldown de 15d ainda ativo → NÃO deve aparecer
+    expect(result.colPosVenda.map(c => c.id)).not.toContain('1');
+  });
+
+  test('DEVE aparecer em POS_VENDA se cooldown de 15d expirou E houve nova compra após o último POS_VENDA', () => {
+    // POS_VENDA há 16 dias, nova compra há 2 dias → cooldown expirado E nova compra → aparece
+    const posVendaDate = createDate(-16);
+    const newPurchaseDate = createDate(-2);
+    const client = { ...baseClient, last_purchase_date: newPurchaseDate };
+    const interactions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: posVendaDate, campaign: 'POS_VENDA' }, latestPosVenda: { date: posVendaDate, campaign: 'POS_VENDA' } }
+    };
+    const result = getKanbanColumns([client], interactions, new Set());
+    expect(result.colPosVenda.map(c => c.id)).toContain('1');
   });
 
   test('Regra 15 Dias: Contato esconde o card de 10 dias e reaparece em 5 dias', () => {
@@ -166,8 +179,9 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colPosVenda.map(c => c.id)).toContain('1');
   });
 
-  test('Pós-Venda: POS_VENDA antes da compra mais recente NÃO bloqueia (nova compra = novo pós-venda)', () => {
+  test('Pós-Venda: POS_VENDA há 5 dias + nova compra → ainda no cooldown (15d absoluto)', () => {
     // Recebeu POS_VENDA há 5 dias, depois comprou de novo há 1 dia
+    // O cooldown de 15 dias ainda NÃO expirou → não deve aparecer
     const posVendaDate = createDate(-5);
     const newPurchaseDate = createDate(-1);
     const interactions: Record<string, ClientInteractions> = {
@@ -175,8 +189,8 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     };
     const client = { ...baseClient, last_purchase_date: newPurchaseDate };
     const result = getKanbanColumns([client], interactions, new Set());
-    // Comprou de novo após o POS_VENDA → DEVE aparecer para novo POS_VENDA
-    expect(result.colPosVenda.map(c => c.id)).toContain('1');
+    // Cooldown de 15d ainda ativo → NÃO deve aparecer mesmo com nova compra
+    expect(result.colPosVenda.map(c => c.id)).not.toContain('1');
   });
 
   test('Pós-Venda: POS_VENDA após a compra bloqueia corretamente', () => {

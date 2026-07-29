@@ -130,29 +130,42 @@ export function getKanbanColumns(
       }
     }
     // Prioridade 1: Pós Venda
-    // Regra: Compras nos últimos 7 dias que ainda NÃO receberam POS_VENDA após a compra, e nenhuma mensagem HOJE.
+    // Regra:
+    //   - Compra nos últimos 7 dias
+    //   - Nenhuma mensagem enviada HOJE
+    //   - Nenhum POS_VENDA enviado nos últimos 15 dias (cooldown absoluto, independente de nova compra)
+    //   - Se o último POS_VENDA foi há >= 15 dias E houve nova compra após esse POS_VENDA: libera para nova abordagem
     let assignedPosVenda = false;
     if (daysSincePurchase !== null && daysSincePurchase >= -1 && daysSincePurchase <= 7) {
       let isBlockedPosVenda = false;
 
-      // Bloqueia se mandou qualquer mensagem HOJE (daysSinceInt == 0)
+      // Bloqueia se mandou qualquer mensagem HOJE
       if (lastInt) {
         const intDate = parseSafeDate(lastInt.date);
-        let daysSinceInt = 0;
         if (intDate) {
-          daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
-        }
-        if (daysSinceInt <= 0) {
-          isBlockedPosVenda = true;
+          const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceInt <= 0) {
+            isBlockedPosVenda = true;
+          }
         }
       }
 
-      // Bloqueia se já recebeu POS_VENDA APÓS a data da compra (comparação somente por dia, sem hora)
+      // Bloqueia se recebeu POS_VENDA nos últimos 15 dias (cooldown absoluto)
       if (!isBlockedPosVenda && record?.latestPosVenda) {
         const posVendaDay = parseSafeDate(record.latestPosVenda.date);
-        const purchaseDay = parseSafeDate(c.last_purchase_date);
-        if (posVendaDay && purchaseDay && posVendaDay.getTime() >= purchaseDay.getTime()) {
-          isBlockedPosVenda = true;
+        if (posVendaDay) {
+          const daysSincePosVenda = Math.round((today.getTime() - posVendaDay.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSincePosVenda < 15) {
+            // Dentro do cooldown de 15 dias → bloqueado
+            isBlockedPosVenda = true;
+          } else {
+            // Cooldown expirado: só aparece se houve nova compra APÓS o último POS_VENDA
+            const purchaseDay = parseSafeDate(c.last_purchase_date);
+            if (purchaseDay && purchaseDay.getTime() <= posVendaDay.getTime()) {
+              // Compra é anterior ou igual ao último POS_VENDA → já foi atendido para essa compra
+              isBlockedPosVenda = true;
+            }
+          }
         }
       }
 
