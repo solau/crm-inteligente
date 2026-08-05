@@ -41,14 +41,14 @@ describe('ROI Logic - Relatório de Conversão', () => {
     expect(stats.campaignStats['POS_VENDA'].revenue).toBe(200);
   });
 
-  test('Deve atribuir interações sem vendedor a vendedor-anonimo', () => {
+  test('Deve atribuir interações sem vendedor a Vendedor Anônimo', () => {
     const interactions: InteractionRecord[] = [
       { ...baseInteraction, user_id: null, sales_attribution: [] }
     ];
 
     const stats = calculateRoiStats(interactions);
-    expect(stats.sellerStats['vendedor-anonimo']).toBeDefined();
-    expect(stats.sellerStats['vendedor-anonimo'].msgs).toBe(1);
+    expect(stats.sellerStats['Vendedor Anônimo']).toBeDefined();
+    expect(stats.sellerStats['Vendedor Anônimo'].msgs).toBe(1);
   });
 
   test('Deve contabilizar corretamente os filtros de tempo do vendedor', () => {
@@ -69,7 +69,7 @@ describe('ROI Logic - Relatório de Conversão', () => {
     ];
 
     const stats = calculateRoiStats(interactions, today);
-    const seller = stats.sellerStats['seller1'];
+    const seller = stats.sellerStats['Vendedor seller1'];
 
     expect(seller.msgsToday).toBe(1);
     expect(seller.msgsWeek).toBe(2);

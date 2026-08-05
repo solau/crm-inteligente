@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     // 2. Expira cashbacks ATIVOS que passaram da validade (45 dias)
     const { data: expired, error: errExp } = await supabaseAdmin
       .from('cashback_ledger')
-      .update({ status: 'EXPIRADO' })
+      .update({ status: 'EXPIRADO', remaining_amount: 0 })
       .eq('tenant_id', tenantId)
       .eq('status', 'ATIVO')
       .lte('expires_at', now)
@@ -98,12 +98,23 @@ export async function GET(request: Request) {
       }
     }
 
+    // 4. Executa a Reconciliação Geral Paginada de Todos os Clientes e Lançamentos
+    let reconciliationReport: any = null;
+    try {
+      const { DataReconciliationAgent } = require('@/lib/agents/DataReconciliationAgent');
+      const reconAgent = new DataReconciliationAgent(tenantId);
+      reconciliationReport = await reconAgent.runReconciliation();
+    } catch (e: any) {
+      console.error('Erro ao executar DataReconciliationAgent no cron:', e);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Rotina de cashback concluída com sucesso',
+      message: 'Rotina de cashback e reconciliação geral concluída com sucesso',
       activated_count: activated?.length || 0,
       expired_count: expired?.length || 0,
-      clients_updated: updatedCount
+      clients_updated: updatedCount,
+      reconciliation: reconciliationReport
     });
 
   } catch (error: any) {

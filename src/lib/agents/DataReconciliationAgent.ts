@@ -15,6 +15,32 @@ export class DataReconciliationAgent {
     this.tenantId = tenantId;
   }
 
+  private async fetchAllPaginated(table: string, select: string, extraFilter?: (q: any) => any): Promise<any[]> {
+    let allRows: any[] = [];
+    let from = 0;
+    const step = 1000;
+
+    while (true) {
+      let query = supabase
+        .from(table)
+        .select(select)
+        .eq('tenant_id', this.tenantId);
+
+      if (extraFilter) {
+        query = extraFilter(query);
+      }
+
+      const { data, error } = await query.range(from, from + step - 1);
+
+      if (error || !data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < step) break;
+      from += step;
+    }
+
+    return allRows;
+  }
+
   async runReconciliation(): Promise<ReconciliationReport> {
     const details: string[] = [];
     let reconciledCount = 0;
@@ -22,13 +48,10 @@ export class DataReconciliationAgent {
     let totalAudited = 0;
 
     try {
-      // 1. Busca todos os clientes cadastrados
-      const { data: clients, error: cErr } = await supabase
-        .from('clients')
-        .select('id, name, phone, last_purchase_date, total_spent')
-        .eq('tenant_id', this.tenantId);
+      // 1. Busca TODOS os clientes cadastrados (com paginação estrita)
+      const clients = await this.fetchAllPaginated('clients', 'id, name, phone, last_purchase_date, total_spent, cashback_balance');
 
-      if (cErr || !clients) {
+      if (!clients || clients.length === 0) {
         return {
           score: 100,
           reconciledCount: 0,
@@ -40,11 +63,8 @@ export class DataReconciliationAgent {
 
       totalAudited = clients.length;
 
-      // 2. Busca todas as compras do cashback_ledger
-      const { data: ledgerRows } = await supabase
-        .from('cashback_ledger')
-        .select('client_id, order_id, created_at, original_amount')
-        .eq('tenant_id', this.tenantId);
+      // 2. Busca TODOS os lançamentos do cashback_ledger (com paginação)
+      const ledgerRows = await this.fetchAllPaginated('cashback_ledger', 'client_id, order_id, created_at, original_amount, remaining_amount, status, expires_at');
 
       const maxDateMap = new Map<string, string>();
       const totalSpentMap = new Map<string, number>();
@@ -70,14 +90,49 @@ export class DataReconciliationAgent {
         });
       }
 
-      // 3. Reconciliação de datas de compra e Lead Score
+      // 3. Reconciliação Geral de datas de compra, Saldo de Cashback e Lead Score
       const now = new Date();
+      const nowIso = now.toISOString();
+
+      // Zero-out e expira qualquer item vencido
+      await supabase
+        .from('cashback_ledger')
+        .update({ status: 'EXPIRADO', remaining_amount: 0 })
+        .eq('tenant_id', this.tenantId)
+        .in('status', ['ATIVO', 'PENDENTE'])
+        .lte('expires_at', nowIso);
+
+      // Garante remaining_amount = 0 em entradas EXPIRADAS/UTILIZADAS
+      await supabase
+        .from('cashback_ledger')
+        .update({ remaining_amount: 0 })
+        .eq('tenant_id', this.tenantId)
+        .in('status', ['EXPIRADO', 'UTILIZADO'])
+        .gt('remaining_amount', 0);
+
+      // Busca TODOS os lançamentos ATIVOS para cálculo exato por cliente
+      const activeLedgerRows = await this.fetchAllPaginated('cashback_ledger', 'client_id, remaining_amount', q => q.eq('status', 'ATIVO'));
+
+      const realActiveBalanceMap = new Map<string, number>();
+      if (activeLedgerRows) {
+        activeLedgerRows.forEach(row => {
+          if (!row.client_id) return;
+          const curr = realActiveBalanceMap.get(row.client_id) || 0;
+          realActiveBalanceMap.set(row.client_id, curr + Number(row.remaining_amount));
+        });
+      }
 
       for (const c of clients) {
         const latestLedgerDate = maxDateMap.get(c.id);
-        if (!latestLedgerDate) continue;
+        const realBalance = Number((realActiveBalanceMap.get(c.id) || 0).toFixed(2));
+        const updates: any = {};
 
-        if (!c.last_purchase_date || new Date(latestLedgerDate) > new Date(c.last_purchase_date)) {
+        if (c.cashback_balance !== undefined && Math.abs(Number(c.cashback_balance) - realBalance) > 0.01) {
+          updates.cashback_balance = realBalance;
+          details.push(`Saldo Cashback Reconciliado: ${c.name} (R$ ${realBalance.toFixed(2)})`);
+        }
+
+        if (latestLedgerDate && (!c.last_purchase_date || new Date(latestLedgerDate) > new Date(c.last_purchase_date))) {
           const calcSpent = totalSpentMap.get(c.id) || Number(c.total_spent) || 0;
           const diffDays = Math.max(0, Math.floor((now.getTime() - new Date(latestLedgerDate).getTime()) / (1000 * 60 * 60 * 24)));
           const recencyScore = diffDays <= 7 ? 100 : diffDays <= 30 ? 80 : diffDays <= 60 ? 50 : 20;
@@ -86,28 +141,22 @@ export class DataReconciliationAgent {
           reconciledCount++;
           details.push(`Data Reconciliada: ${c.name} (${new Date(latestLedgerDate).toLocaleDateString('pt-BR')})`);
 
+          updates.last_purchase_date = latestLedgerDate;
+          updates.lead_score = leadScore;
+          updates.base_lead_score = leadScore;
+        }
+
+        if (Object.keys(updates).length > 0) {
           await supabase
             .from('clients')
-            .update({
-              last_purchase_date: latestLedgerDate,
-              lead_score: leadScore,
-              base_lead_score: leadScore
-            })
+            .update(updates)
             .eq('id', c.id);
         }
       }
 
-      // 4. Reconciliação de Atribuição de Conversões (sales_attribution)
-      const { data: interactions } = await supabase
-        .from('client_interactions')
-        .select('id, client_id, created_at')
-        .eq('tenant_id', this.tenantId)
-        .order('created_at', { ascending: false });
-
-      const { data: existingAttributions } = await supabase
-        .from('sales_attribution')
-        .select('order_id')
-        .eq('tenant_id', this.tenantId);
+      // 4. Reconciliação Geral de Atribuição de Conversões (sales_attribution)
+      const interactions = await this.fetchAllPaginated('client_interactions', 'id, client_id, created_at', q => q.order('created_at', { ascending: false }));
+      const existingAttributions = await this.fetchAllPaginated('sales_attribution', 'order_id');
 
       const existingOrderIds = new Set((existingAttributions || []).map(a => a.order_id));
 
@@ -126,11 +175,13 @@ export class DataReconciliationAgent {
           const clientInts = interactionsByClient.get(order.client_id);
           if (!clientInts || clientInts.length === 0) continue;
 
-          const orderTime = new Date(order.created_at).getTime();
+          const orderDateClean = order.created_at ? order.created_at.replace(' ', '+') : new Date().toISOString();
+          const orderTime = new Date(orderDateClean).getTime();
+
           const validInt = clientInts.find(int => {
-            const intTime = new Date(int.created_at).getTime();
+            const intDateClean = int.created_at ? int.created_at.replace(' ', '+') : new Date().toISOString();
+            const intTime = new Date(intDateClean).getTime();
             const diffDays = (orderTime - intTime) / (1000 * 60 * 60 * 24);
-            // Regra Estrita: A mensagem DEVE ter sido enviada ANTES ou no dia da compra (diffDays >= 0) e em até 30 dias (diffDays <= 30)
             return diffDays >= 0 && diffDays <= 30;
           });
 
@@ -158,7 +209,7 @@ export class DataReconciliationAgent {
         reconciledCount,
         reconciledAttributionsCount,
         totalAudited,
-        details: details.length > 0 ? details : ['Todas as vendas e conversões estão 100% atribuídas.']
+        details: details.length > 0 ? details : ['Todas as vendas e conversões da base estão 100% reconciliadas.']
       };
     } catch (err: any) {
       console.error('Erro na reconciliação de conversões pelo agente:', err);

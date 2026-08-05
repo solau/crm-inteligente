@@ -122,6 +122,14 @@ export class ProcessBlingWebhookUseCase {
     if (!cliente && foneClienteReal) {
       cliente = await this.clientRepository.getClientByPhone(foneClienteReal);
     }
+
+    if (cliente && foneClienteReal && foneClienteReal.length >= 10 && !foneClienteReal.startsWith('5500')) {
+      const isPlaceholder = !cliente.phone || cliente.phone === '71900000000' || cliente.phone === '00000000000' || cliente.phone.startsWith('5500');
+      if (isPlaceholder || cliente.phone !== foneClienteReal) {
+        await this.clientRepository.updateClient(cliente.id!, { phone: foneClienteReal });
+        cliente.phone = foneClienteReal;
+      }
+    }
     
     if (!cliente) {
       cliente = await this.clientRepository.upsertClientByPhone({
@@ -229,7 +237,10 @@ export class ProcessBlingWebhookUseCase {
     }
 
     // Gera o novo Cashback com Carência (Status PENDENTE, ativa em 1 dia, expira em 45)
-    const valorGerado = valorPagoReal * 0.10;
+    // Regra: Cashback é 10% do total dos produtos vendidos MENOS o desconto aplicado
+    const baseProdutos = totalProdutos > 0 ? totalProdutos : Math.max(0, valorPagoReal - frete);
+    const baseCashback = Math.max(0, baseProdutos - descontoAplicado);
+    const valorGerado = Number((baseCashback * 0.10).toFixed(2));
     const activeAt = new Date(saleDateObj.getTime());
     activeAt.setDate(activeAt.getDate() + 1);
     const expiresAt = new Date(saleDateObj.getTime());

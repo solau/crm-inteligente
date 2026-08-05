@@ -56,11 +56,11 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24 * 7 // 1 semana
     });
 
-    // Dispara a rotina autônoma do Agente de Reconciliação de Vendas e Kanban em segundo plano
+    // Dispara a rotina autônoma de sincronização dos últimos 3 dias (Bling) + Reconciliação de Cashback/Conversão em segundo plano
     try {
-      const { DataReconciliationAgent } = require('@/lib/agents/DataReconciliationAgent');
-      const agent = new DataReconciliationAgent('d948b6cc-cc2c-4399-8525-02f17f281d38');
-      agent.runReconciliation().catch((err: any) => console.error('Erro em segundo plano no login:', err));
+      const { SyncRecentOrdersUseCase } = require('@/lib/application/use-cases/SyncRecentOrdersUseCase');
+      const syncUseCase = new SyncRecentOrdersUseCase('d948b6cc-cc2c-4399-8525-02f17f281d38');
+      syncUseCase.execute(3).catch((err: any) => console.error('Erro na sincronização em segundo plano no login:', err));
     } catch (e) {
       // Continua sem bloquear o login do usuário
     }

@@ -13,6 +13,7 @@ describe('ProcessBlingWebhookUseCase', () => {
   beforeEach(() => {
     mockClientRepo = {
       getClientByPhone: jest.fn(),
+      getClientByBlingId: jest.fn().mockResolvedValue(null),
       upsertClientByPhone: jest.fn(),
       updateClient: jest.fn(),
     };
@@ -20,9 +21,11 @@ describe('ProcessBlingWebhookUseCase', () => {
     mockKanbanRepo = {
       getOrCreateColumn: jest.fn().mockResolvedValue('col-123'),
       createDeal: jest.fn(),
+      moveOrCreatePostSalesDeal: jest.fn(),
     };
 
     mockCashbackRepo = {
+      checkOrderExists: jest.fn().mockResolvedValue(false),
       addCashback: jest.fn(),
       consumeCashbackFIFO: jest.fn().mockResolvedValue(true),
       getActiveBalance: jest.fn().mockResolvedValue(100),
@@ -34,6 +37,8 @@ describe('ProcessBlingWebhookUseCase', () => {
     } as any;
 
     mockInteractionRepo = {
+      checkAttributionExists: jest.fn().mockResolvedValue(false),
+      getLatestInteraction: jest.fn().mockResolvedValue(null),
       attributeSale: jest.fn(),
     };
 
@@ -121,10 +126,10 @@ describe('ProcessBlingWebhookUseCase', () => {
       'client-10',
       'order-1234',
       'CAPPING_VIOLATION',
-      'Desconto de R$ 250 excedeu o limite de 20% (R$ 150)'
+      'Desconto de R$ 250 excedeu o limite de 20% (R$ 200)'
     );
 
-    expect(mockKanbanRepo.getOrCreateColumn).toHaveBeenCalledWith('🚨 Alertas Gerenciais', 1);
+    expect(mockKanbanRepo.getOrCreateColumn).toHaveBeenCalledWith('🚨 Auditoria de Descontos', 1);
   });
 
   it('deve criar um cashback PENDENTE (Carência) a cada nova compra', async () => {

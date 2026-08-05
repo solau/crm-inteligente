@@ -223,9 +223,8 @@ export function getKanbanColumns(
   col45d.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
   col90d.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
 
-  // Limita colunas de ausentes a 100 clientes mais relevantes (lead_score DESC)
-  // Colunas maiores tornam o Kanban inutilizável e escondem clientes importantes
-  const MAX_ABSENT = 100;
+  // Limita colunas de ausentes aos clientes mais relevantes (lead_score DESC)
+  const MAX_ABSENT = 1000;
   const col45dLimited = col45d.slice(0, MAX_ABSENT);
   const col90dLimited = col90d.slice(0, MAX_ABSENT);
 
