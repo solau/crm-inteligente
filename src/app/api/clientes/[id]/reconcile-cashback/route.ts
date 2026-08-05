@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
+import { ClientRepository } from '@/lib/infrastructure/repositories/ClientRepository';
+import { KanbanRepository } from '@/lib/infrastructure/repositories/KanbanRepository';
+import { CashbackRepository } from '@/lib/infrastructure/repositories/CashbackRepository';
+import { GeminiService } from '@/lib/services/GeminiService';
+import { ProcessBlingWebhookUseCase } from '@/lib/application/use-cases/ProcessBlingWebhookUseCase';
+import { InteractionRepository } from '@/lib/infrastructure/repositories/InteractionRepository';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,19 +37,45 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // 2. Carrega todos os lançamentos de cashback_ledger deste cliente
+    let ordersFromBling: any[] = [];
+    if (token && blingId) {
+      ordersFromBling = await blingProvider.getOrdersByContactId(blingId);
+      ordersFromBling.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
+      // 2. Processa e importa qualquer pedido faltante do Bling para este cliente
+      const clientRepository = new ClientRepository(tenantId);
+      const kanbanRepository = new KanbanRepository(tenantId);
+      const cashbackRepository = new CashbackRepository();
+      const geminiService = new GeminiService(tenantId);
+      const interactionRepository = new InteractionRepository();
+
+      const webhookUseCase = new ProcessBlingWebhookUseCase(
+        clientRepository,
+        kanbanRepository,
+        geminiService,
+        cashbackRepository,
+        blingProvider,
+        interactionRepository
+      );
+
+      for (const order of ordersFromBling) {
+        if (order.situacao && [6, 9, 15, 24].includes(order.situacao.id)) {
+          const orderId = order.id.toString();
+          const isDuplicated = await cashbackRepository.checkOrderExists(orderId);
+          if (!isDuplicated) {
+            await webhookUseCase.execute({ data: { id: orderId } }, tenantId);
+          }
+        }
+      }
+    }
+
+    // 3. Carrega todos os lançamentos atualizados de cashback_ledger deste cliente
     const { data: ledgerEntries } = await supabaseAdmin
       .from('cashback_ledger')
       .select('*')
       .eq('client_id', clientId)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true });
-
-    let ordersFromBling: any[] = [];
-    if (token && blingId) {
-      ordersFromBling = await blingProvider.getOrdersByContactId(blingId);
-      ordersFromBling.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
-    }
 
     let exactLtv = 0;
     const blingOrdersMap = new Map();
@@ -84,10 +115,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const now = new Date();
     const currentLedger = ledgerEntries || [];
 
-    // Recalcula o estado do Ledger com a regra: 10% de (totalProdutos - desconto) + deduções FIFO
+    // Recalcula o estado do Ledger com a regra: 10% de (totalProdutos - desconto) + deduções FIFO + validade real de 45 dias
     let clientLedgerState = currentLedger.map((e: any) => {
       const blingInfo = blingOrdersMap.get(e.order_id);
       const newOriginal = blingInfo ? blingInfo.cashbackGerado : Number(e.original_amount) || 0;
+      const createdDate = new Date(e.created_at);
+      const realExpiresAt = new Date(createdDate.getTime() + 45 * 24 * 60 * 60 * 1000);
 
       return {
         id: e.id,
@@ -95,8 +128,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         original_amount: newOriginal,
         remaining_amount: newOriginal,
         status: 'ATIVO',
-        created_at: new Date(e.created_at),
-        expires_at: new Date(e.expires_at)
+        created_at: createdDate,
+        expires_at: realExpiresAt
       };
     });
 
@@ -150,6 +183,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .update({
           original_amount: state.original_amount,
           remaining_amount: state.remaining_amount,
+          expires_at: state.expires_at.toISOString(),
           status: state.status
         })
         .eq('id', state.id);
@@ -168,7 +202,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       success: true,
-      message: 'Cashback e LTV auditados e reconciliados com sucesso!',
+      message: 'Pedidos sincronizados e Cashback auditado com sucesso!',
       cashback_balance: realActiveBalance,
       total_spent: finalLtv
     });
