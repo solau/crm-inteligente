@@ -52,16 +52,16 @@ export class KanbanRepository {
     }
   }
 
-  // Move a negociação existente do cliente para o Pós-Venda ou cria se não existir
+  // Move a negociação existente do cliente para o Pós-Venda (removendo qualquer duplicata) ou cria se não existir
   async moveOrCreatePostSalesDeal(clientId: string, columnId: string, title: string, value: number): Promise<void> {
-    const { data: existingDeal } = await supabaseAdmin
+    const { data: existingDeals } = await supabaseAdmin
       .from('deals')
       .select('id')
       .eq('client_id', clientId)
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
 
-    if (existingDeal) {
+    if (existingDeals && existingDeals.length > 0) {
+      const primaryDeal = existingDeals[0];
       await supabaseAdmin
         .from('deals')
         .update({
@@ -69,7 +69,12 @@ export class KanbanRepository {
           title,
           value
         })
-        .eq('id', existingDeal.id);
+        .eq('id', primaryDeal.id);
+
+      if (existingDeals.length > 1) {
+        const extraIds = existingDeals.slice(1).map(d => d.id);
+        await supabaseAdmin.from('deals').delete().in('id', extraIds);
+      }
     } else {
       await this.createDeal(clientId, columnId, title, value);
     }
