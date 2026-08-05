@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { KanbanBoard } from '@/components/KanbanBoard';
+import SyncKanbanButton from '@/components/SyncKanbanButton';
 import { getSession } from '@/lib/auth';
 
 export const revalidate = 0; // Para garantir que os dados estejam sempre frescos
@@ -193,9 +194,12 @@ export default async function KanbanPage() {
     <div className="min-h-screen bg-black/90 pt-8 px-4 md:px-8 relative">
       <div className="max-w-[1600px] mx-auto pt-4">
         <div className="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-white/90">Kanban Inteligente</h1>
-            <p className="text-white/50 text-xs md:text-sm">Organização automática com base no ciclo de vida e cashback do cliente.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full xl:w-auto">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-white/90">Kanban Inteligente</h1>
+              <p className="text-white/50 text-xs md:text-sm">Organização automática com base no ciclo de vida e cashback do cliente.</p>
+            </div>
+            <SyncKanbanButton />
           </div>
           
           {/* Header KPI do Vendedor */}
