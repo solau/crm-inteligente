@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase';
 import { BlingProvider } from '@/lib/infrastructure/providers/BlingProvider';
 
