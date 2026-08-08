@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Target, BrainCircuit, DollarSign, MessageSquare } from 'lucide-react';
 import RoiAIAnalyzer from './RoiAIAnalyzer'; // Client component
 import { calculateRoiStats } from '@/lib/utils/roiLogic';
+import MonthFilter from './MonthFilter';
 
 export const revalidate = 0;
 
@@ -88,18 +89,7 @@ export default async function RoiReportPage({
           </div>
           
           <div className="flex items-center gap-4">
-            <form method="GET" className="flex items-center gap-2 bg-card border border-border p-1 rounded-xl">
-              <select 
-                name="month" 
-                defaultValue={selectedMonth}
-                onChange={(e) => e.target.form?.submit()}
-                className="bg-transparent text-sm font-medium focus:outline-none p-2 rounded-lg cursor-pointer"
-              >
-                {monthOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </form>
+            <MonthFilter options={monthOptions} selectedMonth={selectedMonth} />
             <RoiAIAnalyzer 
               stats={{ totalMessages, totalSales, totalRevenue, conversionRate, campaignStats, sellerStats }} 
             />
