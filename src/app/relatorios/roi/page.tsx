@@ -11,9 +11,10 @@ export const revalidate = 0;
 export default async function RoiReportPage({
   searchParams,
 }: {
-  searchParams?: { month?: string };
+  searchParams?: Promise<{ month?: string }>;
 }) {
   const session = await getSession();
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   
   // Vendedores não têm acesso a este relatório financeiro/gerencial
   if (!session || session.role !== 'ADMIN') {
@@ -27,7 +28,7 @@ export default async function RoiReportPage({
 
   const today = new Date();
   const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  const selectedMonth = searchParams?.month || currentMonthStr;
+  const selectedMonth = resolvedSearchParams.month || currentMonthStr;
 
   // Calcula início e fim do mês selecionado
   const [year, month] = selectedMonth.split('-');
