@@ -38,8 +38,17 @@ export default async function KanbanPage() {
     
     if (data && data.length > 0) {
       for (const row of data) {
-        if (!clients.find(c => c.id === row.id)) {
+        const existingIdx = clients.findIndex(c => c.id === row.id || (c.phone && row.phone && c.phone === row.phone));
+        if (existingIdx === -1) {
           clients.push(row);
+        } else {
+          // Se o novo registro tiver mais cashback ou maior lead_score, substitui o antigo (merge básico)
+          const existing = clients[existingIdx];
+          const existingScore = (existing.cashback_balance || 0) * 1000 + (existing.lead_score || 0);
+          const newScore = (row.cashback_balance || 0) * 1000 + (row.lead_score || 0);
+          if (newScore > existingScore) {
+            clients[existingIdx] = row;
+          }
         }
       }
       if (data.length < step) {
