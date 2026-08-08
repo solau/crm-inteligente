@@ -7,7 +7,11 @@ import { calculateRoiStats } from '@/lib/utils/roiLogic';
 
 export const revalidate = 0;
 
-export default async function RoiReportPage() {
+export default async function RoiReportPage({
+  searchParams,
+}: {
+  searchParams?: { month?: string };
+}) {
   const session = await getSession();
   
   // Vendedores não têm acesso a este relatório financeiro/gerencial
@@ -20,7 +24,16 @@ export default async function RoiReportPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Busca todas as interações e suas vendas atribuídas
+  const today = new Date();
+  const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const selectedMonth = searchParams?.month || currentMonthStr;
+
+  // Calcula início e fim do mês selecionado
+  const [year, month] = selectedMonth.split('-');
+  const startDate = new Date(Number(year), Number(month) - 1, 1);
+  const endDate = new Date(Number(year), Number(month), 1); // 1º dia do mês seguinte
+
+  // Busca todas as interações e suas vendas atribuídas no mês selecionado
   const { data: interactions, error } = await supabase
     .from('client_interactions')
     .select(`
@@ -33,7 +46,9 @@ export default async function RoiReportPage() {
         id,
         revenue
       )
-    `);
+    `)
+    .gte('created_at', startDate.toISOString())
+    .lt('created_at', endDate.toISOString());
 
   if (error) {
     console.error('Erro ao buscar dados de ROI', error);
@@ -51,6 +66,17 @@ export default async function RoiReportPage() {
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  // Gera opções de meses (últimos 12 meses)
+  const monthOptions = [];
+  const tempDate = new Date();
+  tempDate.setDate(1);
+  for (let i = 0; i < 12; i++) {
+    const v = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
+    const label = tempDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    monthOptions.push({ value: v, label: label.charAt(0).toUpperCase() + label.slice(1) });
+    tempDate.setMonth(tempDate.getMonth() - 1);
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -61,30 +87,44 @@ export default async function RoiReportPage() {
             <p className="text-muted-foreground mt-1 text-sm md:text-base">Análise de conversão das mensagens enviadas pelos vendedores.</p>
           </div>
           
-          <RoiAIAnalyzer 
-            stats={{ totalMessages, totalSales, totalRevenue, conversionRate, campaignStats, sellerStats }} 
-          />
+          <div className="flex items-center gap-4">
+            <form method="GET" className="flex items-center gap-2 bg-card border border-border p-1 rounded-xl">
+              <select 
+                name="month" 
+                defaultValue={selectedMonth}
+                onChange={(e) => e.target.form?.submit()}
+                className="bg-transparent text-sm font-medium focus:outline-none p-2 rounded-lg cursor-pointer"
+              >
+                {monthOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </form>
+            <RoiAIAnalyzer 
+              stats={{ totalMessages, totalSales, totalRevenue, conversionRate, campaignStats, sellerStats }} 
+            />
+          </div>
         </div>
 
         {/* Resumo Geral */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Mensagens Enviadas</p>
+              <p className="text-sm font-medium text-muted-foreground">Enviados no Mês</p>
               <MessageSquare className="text-primary opacity-50" size={20} />
             </div>
             <h2 className="text-3xl font-bold mt-2">{totalMessages}</h2>
           </div>
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Vendas Convertidas</p>
+              <p className="text-sm font-medium text-muted-foreground">Vendas (Mês)</p>
               <Target className="text-emerald-500 opacity-50" size={20} />
             </div>
             <h2 className="text-3xl font-bold mt-2">{totalSales}</h2>
           </div>
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Taxa de Conversão</p>
+              <p className="text-sm font-medium text-muted-foreground">Conversão (Mês)</p>
               <BrainCircuit className="text-indigo-500 opacity-50" size={20} />
             </div>
             <h2 className="text-3xl font-bold mt-2">{conversionRate}%</h2>
@@ -104,19 +144,17 @@ export default async function RoiReportPage() {
           {/* Por Vendedor */}
           <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col col-span-1 md:col-span-2">
             <div className="p-4 bg-muted/30 border-b border-border">
-              <h3 className="font-semibold">Performance por Vendedor (Meta Diária: 30 msgs)</h3>
+              <h3 className="font-semibold">Performance por Vendedor (Msgs / Vendas / Taxa)</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/10 text-muted-foreground">
                   <tr>
                     <th className="text-left py-3 px-4 font-medium whitespace-nowrap">Vendedor</th>
-                    <th className="text-center py-3 px-4 font-medium">Msgs (Hoje)</th>
-                    <th className="text-center py-3 px-4 font-medium">Msgs (7 Dias)</th>
-                    <th className="text-center py-3 px-4 font-medium">Msgs (Mês)</th>
-                    <th className="text-right py-3 px-4 font-medium">Vendas (Total)</th>
-                    <th className="text-center py-3 px-4 font-medium">Conversão</th>
-                    <th className="text-right py-3 px-4 font-medium">Receita (Total)</th>
+                    <th className="text-center py-3 px-4 font-medium">Hoje</th>
+                    <th className="text-center py-3 px-4 font-medium">7 Dias</th>
+                    <th className="text-center py-3 px-4 font-medium">Mês</th>
+                    <th className="text-right py-3 px-4 font-medium">Receita (Mês)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -124,23 +162,31 @@ export default async function RoiReportPage() {
                     const atingiuMeta = data.msgsToday >= 30;
                     return (
                       <tr key={seller} className="hover:bg-muted/10 transition-colors">
-                        <td className="py-3 px-4 font-medium capitalize whitespace-nowrap">{seller}</td>
-                        <td className="py-3 px-4 text-center">
-                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${atingiuMeta ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                            {data.msgsToday} / 30
-                          </span>
+                        <td className="py-3 px-4 font-medium capitalize whitespace-nowrap">
+                          {seller}
+                          <div className={`text-[10px] ${atingiuMeta ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {data.msgsToday} / 30 msgs hoje
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-center">{data.msgsWeek}</td>
-                        <td className="py-3 px-4 text-center">{data.msgsMonth}</td>
-                        <td className="py-3 px-4 text-right text-emerald-500 font-semibold">{data.sales}</td>
-                        <td className="py-3 px-4 text-center font-bold text-indigo-400">{data.convRate}%</td>
-                        <td className="py-3 px-4 text-right font-semibold whitespace-nowrap">{formatMoney(data.revenue)}</td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <span className="font-semibold">{data.msgsToday}</span> msgs <br/>
+                          <span className="text-emerald-500 font-bold">{data.salesToday}</span> vnd <span className="text-indigo-400 text-xs">({data.convRateToday}%)</span>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <span className="font-semibold">{data.msgsWeek}</span> msgs <br/>
+                          <span className="text-emerald-500 font-bold">{data.salesWeek}</span> vnd <span className="text-indigo-400 text-xs">({data.convRateWeek}%)</span>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <span className="font-semibold">{data.msgsMonth}</span> msgs <br/>
+                          <span className="text-emerald-500 font-bold">{data.salesMonth}</span> vnd <span className="text-indigo-400 text-xs">({data.convRateMonth}%)</span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold whitespace-nowrap text-emerald-500 text-base">{formatMoney(data.revenue)}</td>
                       </tr>
                     );
                   })}
                   {Object.keys(sellerStats).length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-muted-foreground">Sem dados registrados.</td>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground">Sem dados registrados.</td>
                     </tr>
                   )}
                 </tbody>
@@ -169,7 +215,7 @@ export default async function RoiReportPage() {
                       <td className="py-3 px-4 font-medium whitespace-nowrap">{campaign}</td>
                       <td className="py-3 px-4 text-right">{data.msgs}</td>
                       <td className="py-3 px-4 text-right text-emerald-500">{data.sales}</td>
-                      <td className="py-3 px-4 text-right font-semibold whitespace-nowrap">{formatMoney(data.revenue)}</td>
+                      <td className="py-3 px-4 text-right font-semibold whitespace-nowrap text-emerald-500">{formatMoney(data.revenue)}</td>
                     </tr>
                   ))}
                   {Object.keys(campaignStats).length === 0 && (
