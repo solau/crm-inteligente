@@ -28,6 +28,7 @@ export default async function KanbanPage() {
     const { data, error } = await supabase
       .from('vw_client_radar')
       .select('*')
+      .order('id')
       .range(from, from + step - 1);
       
     if (error) {
@@ -36,7 +37,11 @@ export default async function KanbanPage() {
     }
     
     if (data && data.length > 0) {
-      clients = [...clients, ...data];
+      for (const row of data) {
+        if (!clients.find(c => c.id === row.id)) {
+          clients.push(row);
+        }
+      }
       if (data.length < step) {
         hasMore = false;
       } else {
