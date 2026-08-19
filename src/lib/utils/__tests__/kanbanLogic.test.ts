@@ -16,11 +16,17 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     return d.toISOString();
   };
 
-  test('Deve colocar em POS_VENDA se a compra foi entre -1 e 7 dias', () => {
+  test('Deve colocar em POS_VENDA se a compra foi entre 1 e 7 dias atrás', () => {
     const client = { ...baseClient, last_purchase_date: createDate(-3) };
     const result = getKanbanColumns([client], {}, new Set());
     expect(result.colPosVenda).toHaveLength(1);
     expect(result.colPosVenda[0].id).toBe('1');
+  });
+
+  test('NÃO deve colocar em POS_VENDA se a compra foi HOJE (só aparece a partir de 1 dia após)', () => {
+    const client = { ...baseClient, last_purchase_date: createDate(0) };
+    const result = getKanbanColumns([client], {}, new Set());
+    expect(result.colPosVenda).toHaveLength(0);
   });
 
   test('NÃO deve colocar em POS_VENDA se o contato na campanha POS_VENDA for mais recente que a compra', () => {
