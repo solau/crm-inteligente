@@ -84,13 +84,17 @@ export async function POST(request: Request) {
     // 5. Verifica e registra Atribuição de Venda ao WhatsApp se o cliente recebeu mensagem prévia
     const lastInteraction = await interactionRepo.getLatestInteraction(clientId, saleDateIso);
     if (lastInteraction) {
-      await interactionRepo.attributeSale(
-        tenantId,
-        lastInteraction.id,
-        generatedOrderId,
-        valorVenda,
-        saleDateIso
-      );
+      const intTime = new Date(lastInteraction.created_at).getTime();
+      const saleTime = saleOrderDate.getTime();
+      if (intTime < saleTime) {
+        await interactionRepo.attributeSale(
+          tenantId,
+          lastInteraction.id,
+          generatedOrderId,
+          valorVenda,
+          saleDateIso
+        );
+      }
     }
 
     return NextResponse.json({

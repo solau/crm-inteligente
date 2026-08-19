@@ -155,13 +155,17 @@ export class SyncHistoricalDataUseCase {
         if (!attributionExists) {
           const lastInteraction = await interactionRepo.getLatestInteraction(cliente.id!, saleDateStr);
           if (lastInteraction) {
-            await interactionRepo.attributeSale(
-              tenantId,
-              lastInteraction.id,
-              order.order_id,
-              totalVenda,
-              saleDateStr
-            );
+            const intTime = new Date(lastInteraction.created_at).getTime();
+            const saleTime = orderDate.getTime();
+            if (intTime < saleTime) {
+              await interactionRepo.attributeSale(
+                tenantId,
+                lastInteraction.id,
+                order.order_id,
+                totalVenda,
+                saleDateStr
+              );
+            }
           }
         }
       } catch (err) {

@@ -17,8 +17,8 @@ export class InteractionRepository {
       .eq('client_id', clientId);
 
     if (maxDateStr) {
-      // Interação deve ter ocorrido antes ou no exato momento da venda
-      query = query.lte('created_at', maxDateStr);
+      // Interação deve ter ocorrido estritamente ANTES da venda
+      query = query.lt('created_at', maxDateStr);
       
       // Janela de atribuição: Apenas interações dos últimos 30 dias que antecederam a venda importam
       const minDate = new Date(maxDateStr);
@@ -29,7 +29,7 @@ export class InteractionRepository {
     const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
       
     if (error && error.code !== 'PGRST116') {
       console.error('Erro ao buscar interação:', error);

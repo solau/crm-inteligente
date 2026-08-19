@@ -161,10 +161,14 @@ export class ProcessBlingWebhookUseCase {
     }
 
     // 5. Atribuição de Conversão (Tracking) ANTECIPADA
-    // Data exata em que o pedido foi criado no Bling, ou a data atual
-    let saleDateStr = new Date().toISOString();
+    // Data exata em que o pedido foi criado no Bling ou recebido via webhook
+    const nowIso = new Date().toISOString();
+    let saleDateStr = nowIso;
     if (fullOrder.data) {
-      saleDateStr = `${fullOrder.data}T23:59:59.999Z`;
+      const isToday = fullOrder.data === nowIso.split('T')[0];
+      if (!isToday) {
+        saleDateStr = `${fullOrder.data}T00:00:00.000Z`;
+      }
     }
 
     // CRÍTICO: Atualiza last_purchase_date SEMPRE para qualquer pedido válido.
@@ -184,15 +188,19 @@ export class ProcessBlingWebhookUseCase {
       const attributionExists = await this.interactionRepository.checkAttributionExists(orderId);
       if (!attributionExists) {
         const lastInteraction = await this.interactionRepository.getLatestInteraction(cliente.id!, saleDateStr);
-        // Atribui se a interação ocorreu nos últimos 15 dias
+        // Atribui se a interação ocorreu estritamente ANTES da venda nos últimos 30 dias
         if (lastInteraction) {
-          await this.interactionRepository.attributeSale(
-            tenantId,
-            lastInteraction.id,
-            orderId,
-            valorPagoReal,
-            saleDateStr
-          );
+          const intTime = new Date(lastInteraction.created_at).getTime();
+          const saleTime = saleDateObj.getTime();
+          if (intTime < saleTime) {
+            await this.interactionRepository.attributeSale(
+              tenantId,
+              lastInteraction.id,
+              orderId,
+              valorPagoReal,
+              saleDateStr
+            );
+          }
         }
       }
     }
