@@ -155,22 +155,75 @@ export class DataReconciliationAgent {
       }
 
       // 4. Reconciliação Geral de Atribuição de Conversões (sales_attribution)
-      const interactions = await this.fetchAllPaginated('client_interactions', 'id, client_id, created_at', q => q.order('created_at', { ascending: false }));
-      const existingAttributions = await this.fetchAllPaginated('sales_attribution', 'order_id');
+      const interactions = await this.fetchAllPaginated('client_interactions', 'id, client_id, created_at, campaign_type', q => q.order('created_at', { ascending: false }));
+      const existingAttributions = await this.fetchAllPaginated('sales_attribution', 'id, order_id, interaction_id, created_at, revenue');
 
-      const existingOrderIds = new Set((existingAttributions || []).map(a => a.order_id));
-
+      // Mapeamento de interações por cliente
+      const interactionsByClient = new Map<string, any[]>();
       if (interactions && interactions.length > 0) {
-        const interactionsByClient = new Map<string, any[]>();
         interactions.forEach(int => {
           if (!interactionsByClient.has(int.client_id)) {
             interactionsByClient.set(int.client_id, []);
           }
           interactionsByClient.get(int.client_id)!.push(int);
         });
+      }
 
+      // Mapa de interações por ID para busca rápida
+      const interactionsById = new Map<string, any>();
+      interactions?.forEach(int => interactionsById.set(int.id, int));
+
+      // 4.1 Auditoria e Limpeza de Atribuições Existentes Inválidas (Mensagem enviada após a venda)
+      const validExistingOrderIds = new Set<string>();
+
+      for (const attr of existingAttributions || []) {
+        const order = uniqueOrdersMap.get(attr.order_id);
+        const linkedInt = interactionsById.get(attr.interaction_id);
+
+        const orderDateClean = (order?.created_at || attr.created_at)?.replace(' ', '+') || new Date().toISOString();
+        const orderTime = new Date(orderDateClean).getTime();
+
+        const intDateClean = linkedInt?.created_at ? linkedInt.created_at.replace(' ', '+') : null;
+        const intTime = intDateClean ? new Date(intDateClean).getTime() : null;
+
+        // Se a interação vinculada ocorreu DEPOIS da venda, é uma atribuição inválida!
+        const isInvalid = !intTime || intTime >= orderTime;
+
+        if (isInvalid) {
+          // Tenta encontrar se havia uma interação prévia legítima para esse cliente
+          const clientInts = order?.client_id ? interactionsByClient.get(order.client_id) : [];
+          const truePriorInt = (clientInts || []).find(int => {
+            const trueIntTime = new Date(int.created_at.replace(' ', '+')).getTime();
+            const diffDays = (orderTime - trueIntTime) / (1000 * 60 * 60 * 24);
+            return trueIntTime < orderTime && diffDays <= 30;
+          });
+
+          if (truePriorInt) {
+            // Corrige para apontar para a interação anterior legítima
+            await supabase
+              .from('sales_attribution')
+              .update({ interaction_id: truePriorInt.id })
+              .eq('id', attr.id);
+            validExistingOrderIds.add(attr.order_id);
+            details.push(`Atribuição Corrigida: Pedido #${attr.order_id} reatribuído à mensagem legítima (${truePriorInt.campaign_type})`);
+          } else {
+            // Não havia mensagem antes da venda -> remove a atribuição espúria
+            await supabase
+              .from('sales_attribution')
+              .delete()
+              .eq('id', attr.id);
+            details.push(`Atribuição Inválida Expurada: Pedido #${attr.order_id} (Mensagem foi enviada após a venda)`);
+          }
+          reconciledAttributionsCount++;
+        } else {
+          validExistingOrderIds.add(attr.order_id);
+        }
+      }
+
+      // 4.2 Atribuição de Pedidos Faltantes
+      if (interactions && interactions.length > 0) {
         for (const order of uniqueOrdersMap.values()) {
-          if (existingOrderIds.has(order.order_id)) continue;
+          if (validExistingOrderIds.has(order.order_id)) continue;
 
           const clientInts = interactionsByClient.get(order.client_id);
           if (!clientInts || clientInts.length === 0) continue;
@@ -182,7 +235,7 @@ export class DataReconciliationAgent {
             const intDateClean = int.created_at ? int.created_at.replace(' ', '+') : new Date().toISOString();
             const intTime = new Date(intDateClean).getTime();
             const diffDays = (orderTime - intTime) / (1000 * 60 * 60 * 24);
-            return diffDays >= 0 && diffDays <= 30;
+            return intTime < orderTime && diffDays <= 30;
           });
 
           if (validInt) {
@@ -197,6 +250,7 @@ export class DataReconciliationAgent {
               revenue: rev,
               created_at: order.created_at
             });
+            validExistingOrderIds.add(order.order_id);
           }
         }
       }

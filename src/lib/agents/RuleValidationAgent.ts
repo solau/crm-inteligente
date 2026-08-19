@@ -70,11 +70,17 @@ export class RuleValidationAgent {
     try {
       const { data: attributions } = await supabase
         .from('sales_attribution')
-        .select('id, interaction_id, revenue')
-        .limit(100);
+        .select(`
+          id,
+          order_id,
+          interaction_id,
+          revenue,
+          created_at,
+          client_interactions ( id, created_at, campaign_type )
+        `);
 
       if (attributions && attributions.length > 0) {
-        const orphanAttributions = attributions.filter((a: any) => !a.interaction_id);
+        const orphanAttributions = attributions.filter((a: any) => !a.interaction_id || !a.client_interactions);
         if (orphanAttributions.length > 0) {
           conversionStatus = 'warning';
           violations.push({
@@ -82,6 +88,28 @@ export class RuleValidationAgent {
             severity: 'medium',
             description: `Encontradas ${orphanAttributions.length} conversões de vendas sem interação registrada.`,
             count: orphanAttributions.length
+          });
+        }
+
+        // Validação Temporal: Checa se a mensagem foi enviada DEPOIS da venda
+        let invalidTemporalCount = 0;
+        for (const a of attributions) {
+          const linkedInt: any = Array.isArray(a.client_interactions) ? a.client_interactions[0] : a.client_interactions;
+          if (!linkedInt?.created_at || !a.created_at) continue;
+          const intTime = new Date(linkedInt.created_at).getTime();
+          const orderTime = new Date(a.created_at).getTime();
+          if (intTime >= orderTime) {
+            invalidTemporalCount++;
+          }
+        }
+
+        if (invalidTemporalCount > 0) {
+          conversionStatus = 'error';
+          violations.push({
+            rule: 'Consistência Temporal de Conversão',
+            severity: 'high',
+            description: `Detectadas ${invalidTemporalCount} atribuições onde a mensagem de WhatsApp foi enviada após a venda.`,
+            count: invalidTemporalCount
           });
         }
       }
