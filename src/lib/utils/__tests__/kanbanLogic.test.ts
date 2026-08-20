@@ -30,6 +30,20 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colBpe25[0].id).toBe('1');
   });
 
+  test('Lead importado (BPE25 / Corrida) que efetua primeira compra NÃO deve mais aparecer nas colunas de importação e deve entrar em POS_VENDA', () => {
+    const convertedLead = {
+      ...baseClient,
+      preferences: 'Origem: Leads BPE25',
+      total_spent: 180,
+      last_purchase_date: createDate(-2) // Comprou há 2 dias
+    };
+    const result = getKanbanColumns([convertedLead], {}, new Set());
+    expect(result.colBpe25).toHaveLength(0);
+    expect(result.colCorridaAlphaville).toHaveLength(0);
+    expect(result.colPosVenda).toHaveLength(1);
+    expect(result.colPosVenda[0].id).toBe('1');
+  });
+
   test('Deve colocar em POS_VENDA se a compra foi entre 1 e 7 dias atrás', () => {
     const client = { ...baseClient, last_purchase_date: createDate(-3) };
     const result = getKanbanColumns([client], {}, new Set());

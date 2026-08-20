@@ -134,9 +134,12 @@ export function getKanbanColumns(
       }
     }
 
-    // Prioridade 0: Corrida Alphaville (Novos Leads / Prospectos sem compra prévia)
+    // Identifica se o cliente já realizou qualquer compra na loja
+    const hasPurchased = (c.last_purchase_date !== null && c.last_purchase_date !== undefined) || (Number(c.total_spent) > 0);
+
+    // Prioridade 0: Corrida Alphaville (Apenas Prospectos que NUNCA compraram)
     const isCorrida = c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('corrida alphaville');
-    if (isCorrida && (!c.last_purchase_date || Number(c.total_spent) === 0)) {
+    if (isCorrida && !hasPurchased) {
       let isBlockedCorrida = false;
       if (lastInt) {
         const intDate = parseSafeDate(lastInt.date);
@@ -156,9 +159,9 @@ export function getKanbanColumns(
       continue;
     }
 
-    // Prioridade 0.1: Leads BPE25 (Novos Leads sem compra prévia)
+    // Prioridade 0.1: Leads BPE25 (Apenas Prospectos que NUNCA compraram)
     const isBpe25 = c.preferences && typeof c.preferences === 'string' && (c.preferences.toLowerCase().includes('bpe25') || c.preferences.toLowerCase().includes('bpe'));
-    if (isBpe25 && (!c.last_purchase_date || Number(c.total_spent) === 0)) {
+    if (isBpe25 && !hasPurchased) {
       let isBlockedBpe25 = false;
       if (lastInt) {
         const intDate = parseSafeDate(lastInt.date);
