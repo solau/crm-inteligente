@@ -65,7 +65,7 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
 
     // Por Vendedor com lógica de tempo
     const profile = Array.isArray(int.user_profiles) ? int.user_profiles[0] : int.user_profiles;
-    const seller = profile?.name || (int.user_id ? `Vendedor ${int.user_id.split('-')[0]}` : 'Vendedor Anônimo');
+    const seller = profile?.name || (int.user_id ? `Vendedor ${int.user_id.split('-')[0]}` : 'Sistema / Sem Atendente');
     if (!sellerStats[seller]) {
       sellerStats[seller] = { 
         msgsToday: 0, salesToday: 0, 
