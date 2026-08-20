@@ -49,12 +49,12 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colBpe25[0].id).toBe('1');
   });
 
-  test('Lead importado (BPE25 / Corrida) que efetua primeira compra NÃO deve mais aparecer nas colunas de importação e deve entrar em POS_VENDA', () => {
+  test('Lead importado (BPE25 / Corrida) que efetua primeira compra NÃO deve mais aparecer nas colunas de importação e deve entrar em POS_VENDA após 3 dias', () => {
     const convertedLead = {
       ...baseClient,
       preferences: 'Origem: Leads BPE25',
       total_spent: 180,
-      last_purchase_date: createDate(-2) // Comprou há 2 dias
+      last_purchase_date: createDate(-3) // Comprou há 3 dias
     };
     const result = getKanbanColumns([convertedLead], {}, new Set());
     expect(result.colBpe25).toHaveLength(0);
@@ -63,17 +63,21 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colPosVenda[0].id).toBe('1');
   });
 
-  test('Deve colocar em POS_VENDA se a compra foi entre 1 e 7 dias atrás', () => {
+  test('Deve colocar em POS_VENDA se a compra foi entre 3 e 7 dias atrás', () => {
     const client = { ...baseClient, last_purchase_date: createDate(-3) };
     const result = getKanbanColumns([client], {}, new Set());
     expect(result.colPosVenda).toHaveLength(1);
     expect(result.colPosVenda[0].id).toBe('1');
   });
 
-  test('NÃO deve colocar em POS_VENDA se a compra foi HOJE (só aparece a partir de 1 dia após)', () => {
-    const client = { ...baseClient, last_purchase_date: createDate(0) };
-    const result = getKanbanColumns([client], {}, new Set());
-    expect(result.colPosVenda).toHaveLength(0);
+  test('NÃO deve colocar em POS_VENDA se a compra foi há menos de 3 dias (ex: HOJE ou ontem)', () => {
+    const clientToday = { ...baseClient, last_purchase_date: createDate(0) };
+    const clientYesterday = { ...baseClient, last_purchase_date: createDate(-1) };
+    const client2DaysAgo = { ...baseClient, last_purchase_date: createDate(-2) };
+    
+    expect(getKanbanColumns([clientToday], {}, new Set()).colPosVenda).toHaveLength(0);
+    expect(getKanbanColumns([clientYesterday], {}, new Set()).colPosVenda).toHaveLength(0);
+    expect(getKanbanColumns([client2DaysAgo], {}, new Set()).colPosVenda).toHaveLength(0);
   });
 
   test('NÃO deve colocar em POS_VENDA se o contato na campanha POS_VENDA for mais recente que a compra', () => {

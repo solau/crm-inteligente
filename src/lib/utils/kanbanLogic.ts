@@ -181,12 +181,12 @@ export function getKanbanColumns(
 
     // Prioridade 1: Pós Venda
     // Regra:
-    //   - Compra entre 1 e 7 dias atrás (só aparece a partir de 1 dia após a data da venda)
+    //   - Compra entre 3 e 7 dias atrás (só aparece a partir de 3 dias após a data da venda)
     //   - Nenhuma mensagem enviada HOJE
     //   - Nenhum POS_VENDA enviado nos últimos 15 dias (cooldown absoluto, independente de nova compra)
     //   - Se o último POS_VENDA foi há >= 15 dias E houve nova compra após esse POS_VENDA: libera para nova abordagem
     let assignedPosVenda = false;
-    if (daysSincePurchase !== null && daysSincePurchase >= 1 && daysSincePurchase <= 7) {
+    if (daysSincePurchase !== null && daysSincePurchase >= 3 && daysSincePurchase <= 7) {
       let isBlockedPosVenda = false;
 
       // Bloqueia se mandou qualquer mensagem HOJE
