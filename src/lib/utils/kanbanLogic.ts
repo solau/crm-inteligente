@@ -278,11 +278,10 @@ export function getKanbanColumns(
   const MAX_ABSENT = 1000;
   const col45dLimited = col45d.slice(0, MAX_ABSENT);
   const col90dLimited = col90d.slice(0, MAX_ABSENT);
-  const colBpe25Limited = colBpe25.slice(0, 1000);
 
   return {
     colCorridaAlphaville,
-    colBpe25: colBpe25Limited,
+    colBpe25,
     colPosVenda,
     col1d,
     col5d,

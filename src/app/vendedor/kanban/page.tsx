@@ -18,16 +18,34 @@ export default async function KanbanPage() {
     }
   );
 
-  // Busca preferências dos clientes cadastrados para identificar origens e campanhas específicas
-  const { data: prefData } = await supabase
-    .from('clients')
-    .select('id, preferences')
-    .not('preferences', 'is', null);
-
+  // Busca preferências de TODOS os clientes cadastrados com paginação (evita o limite padrão de 1000 do Supabase)
   const prefMap = new Map<string, string>();
-  prefData?.forEach((p: any) => {
-    if (p.preferences) prefMap.set(p.id, p.preferences);
-  });
+  let prefFrom = 0;
+  const prefStep = 1000;
+  let hasMorePrefs = true;
+
+  while (hasMorePrefs) {
+    const { data: prefBatch, error: prefErr } = await supabase
+      .from('clients')
+      .select('id, preferences')
+      .not('preferences', 'is', null)
+      .order('id')
+      .range(prefFrom, prefFrom + prefStep - 1);
+
+    if (prefErr || !prefBatch || prefBatch.length === 0) {
+      break;
+    }
+
+    prefBatch.forEach((p: any) => {
+      if (p.preferences) prefMap.set(p.id, p.preferences);
+    });
+
+    if (prefBatch.length < prefStep) {
+      hasMorePrefs = false;
+    } else {
+      prefFrom += prefStep;
+    }
+  }
 
   // Busca os dados da view que alimenta o radar com paginação para ignorar o limite de 1000 linhas
   let clients: any[] = [];
