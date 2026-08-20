@@ -145,10 +145,9 @@ export function getKanbanColumns(
         const intDate = parseSafeDate(lastInt.date);
         if (intDate) {
           const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceInt <= 0) {
-            isBlockedCorrida = true; // Se mandou mensagem hoje, não exibe
-          } else if (lastInt.campaign === 'CORRIDA_ALPHAVILLE' && daysSinceInt < 15) {
-            isBlockedCorrida = true; // Cooldown de 15 dias após contato
+          // Regra Anti-Spam: Intervalo mínimo estrito de 15 dias entre mensagens (dias 0 a 14 bloqueados)
+          if (daysSinceInt < 15) {
+            isBlockedCorrida = true;
           }
         }
       }
@@ -167,10 +166,9 @@ export function getKanbanColumns(
         const intDate = parseSafeDate(lastInt.date);
         if (intDate) {
           const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceInt <= 0) {
-            isBlockedBpe25 = true; // Se mandou mensagem hoje, não exibe
-          } else if (lastInt.campaign === 'LEADS_BPE25' && daysSinceInt < 15) {
-            isBlockedBpe25 = true; // Cooldown de 15 dias após contato
+          // Regra Anti-Spam: Intervalo mínimo estrito de 15 dias entre mensagens (dias 0 a 14 bloqueados)
+          if (daysSinceInt < 15) {
+            isBlockedBpe25 = true;
           }
         }
       }

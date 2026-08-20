@@ -30,6 +30,25 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colBpe25[0].id).toBe('1');
   });
 
+  test('Lead de BPE25 ou Corrida NÃO deve aparecer se recebeu mensagem nos últimos 15 dias (Anti-Spam)', () => {
+    const lead = { ...baseClient, preferences: 'Origem: Leads BPE25', total_spent: 0, last_purchase_date: null };
+    const recentInteractions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-5), campaign: 'LEADS_BPE25' }, latestPosVenda: null }
+    };
+    const result = getKanbanColumns([lead], recentInteractions, new Set());
+    expect(result.colBpe25).toHaveLength(0); // Bloqueado no 5º dia
+  });
+
+  test('Lead de BPE25 ou Corrida DEVE voltar a aparecer após completar 15 dias do último contato', () => {
+    const lead = { ...baseClient, preferences: 'Origem: Leads BPE25', total_spent: 0, last_purchase_date: null };
+    const expiredCooldownInteractions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-15), campaign: 'LEADS_BPE25' }, latestPosVenda: null }
+    };
+    const result = getKanbanColumns([lead], expiredCooldownInteractions, new Set());
+    expect(result.colBpe25).toHaveLength(1); // Liberado no 15º dia
+    expect(result.colBpe25[0].id).toBe('1');
+  });
+
   test('Lead importado (BPE25 / Corrida) que efetua primeira compra NÃO deve mais aparecer nas colunas de importação e deve entrar em POS_VENDA', () => {
     const convertedLead = {
       ...baseClient,
