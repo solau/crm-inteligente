@@ -72,26 +72,32 @@ export default function CustomerProfilesClient({ clients }: CustomerProfilesClie
       let categoryLabel = 'Recorrente';
       let badgeClass = 'bg-sky-500/15 text-sky-400 border-sky-500/30';
 
-      if (isCorrida) {
+      if (isCorrida && ltv === 0) {
         category = 'CORRIDA';
         categoryLabel = '🏃 Corrida Alphaville';
         badgeClass = 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30';
-      } else if (isBpe25) {
+      } else if (isBpe25 && ltv === 0) {
         category = 'BPE25';
         categoryLabel = '🎯 Leads BPE25';
         badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-      } else if (ltv >= 800) {
-        category = 'VIP';
-        categoryLabel = '💎 VIP / High LTV';
-        badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+      } else if (recencyDays > 45 || (ltv === 0 && !isCorrida && !isBpe25)) {
+        category = 'AUSENTE';
+        categoryLabel = ltv >= 800 ? '❄️ Ausente VIP (> 45d)' : '❄️ Ausente (> 45d)';
+        badgeClass = ltv >= 800 
+          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 ring-1 ring-rose-500/40' 
+          : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
       } else if (recencyDays <= 7 && ltv > 0) {
         category = 'FERVENDO';
         categoryLabel = '🔥 Fervendo (<= 7d)';
         badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-      } else if (recencyDays > 45 || (ltv === 0 && !isCorrida && !isBpe25)) {
-        category = 'AUSENTE';
-        categoryLabel = '❄️ Ausente (> 45d)';
-        badgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+      } else if (ltv >= 800 && recencyDays <= 45) {
+        category = 'VIP';
+        categoryLabel = '💎 VIP Ativo (LTV ≥ R$ 800)';
+        badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+      } else {
+        category = 'RECORRENTE';
+        categoryLabel = 'Recorrente (8d a 45d)';
+        badgeClass = 'bg-sky-500/15 text-sky-400 border-sky-500/30';
       }
 
       return {
@@ -225,7 +231,7 @@ export default function CustomerProfilesClient({ clients }: CustomerProfilesClie
         {/* 6 Cards Interativos de Perfis / Clusters */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           
-          {/* 1. VIPs */}
+          {/* 1. VIPs Ativos */}
           <button
             onClick={() => { setSelectedCategory(selectedCategory === 'VIP' ? 'ALL' : 'VIP'); setCurrentPage(1); }}
             className={`text-left p-5 rounded-3xl border transition-all relative overflow-hidden backdrop-blur-md ${
@@ -239,13 +245,13 @@ export default function CustomerProfilesClient({ clients }: CustomerProfilesClie
                 <ShieldCheck size={18} />
               </div>
               <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
-                LTV &ge; R$ 800
+                LTV &ge; 800 &bull; &le; 45d
               </span>
             </div>
-            <p className="text-xs text-muted-foreground font-semibold">Clientes VIPs</p>
+            <p className="text-xs text-muted-foreground font-semibold">VIPs Ativos</p>
             <h3 className="text-2xl font-black text-amber-400 mt-0.5">{clusterCounts.vip}</h3>
             <p className="text-[11px] text-muted-foreground mt-2 border-t border-border pt-2">
-              Maior rentabilidade
+              Comprando na janela
             </p>
           </button>
 
@@ -311,13 +317,13 @@ export default function CustomerProfilesClient({ clients }: CustomerProfilesClie
                 <AlertCircle size={18} />
               </div>
               <span className="text-[10px] font-bold text-rose-400 bg-rose-400/10 px-2 py-0.5 rounded-full border border-rose-400/20">
-                &gt; 45d
+                &gt; 45d Sem Comprar
               </span>
             </div>
             <p className="text-xs text-muted-foreground font-semibold">Ausentes (Churn)</p>
             <h3 className="text-2xl font-black text-rose-400 mt-0.5">{clusterCounts.ausente}</h3>
             <p className="text-[11px] text-muted-foreground mt-2 border-t border-border pt-2">
-              Ofertas de reativação
+              Inclui VIPs ausentes
             </p>
           </button>
 
