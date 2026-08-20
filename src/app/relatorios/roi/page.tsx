@@ -61,6 +61,12 @@ export default async function RoiReportPage({
     totalSales,
     totalRevenue,
     conversionRate,
+    totalMessagesToday,
+    totalSalesToday,
+    totalMessagesWeek,
+    totalSalesWeek,
+    totalRevenueWeek,
+    conversionRateWeek,
     campaignStats,
     sellerStats
   } = calculateRoiStats(interactions || []);
@@ -78,6 +84,8 @@ export default async function RoiReportPage({
     monthOptions.push({ value: v, label: label.charAt(0).toUpperCase() + label.slice(1) });
     tempDate.setMonth(tempDate.getMonth() - 1);
   }
+
+  const isCurrentMonth = selectedMonth === currentMonthStr;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -99,33 +107,71 @@ export default async function RoiReportPage({
 
         {/* Resumo Geral */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Card 1: Mensagens do Mês */}
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-start">
               <p className="text-sm font-medium text-muted-foreground">Enviados no Mês</p>
               <MessageSquare className="text-primary opacity-50" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{totalMessages}</h2>
+            <h2 className="text-3xl font-bold mt-2 text-foreground">{totalMessages}</h2>
+            {isCurrentMonth && (
+              <p className="text-xs text-emerald-400 font-semibold mt-1">
+                +{totalMessagesToday} msgs hoje
+              </p>
+            )}
           </div>
+
+          {/* Card 2: Últimos 7 Dias ou Conversão */}
+          {isCurrentMonth ? (
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm border-indigo-500/30 bg-indigo-500/5">
+              <div className="flex justify-between items-start">
+                <p className="text-sm font-medium text-indigo-400">Últimos 7 Dias</p>
+                <BrainCircuit className="text-indigo-400" size={20} />
+              </div>
+              <h2 className="text-3xl font-bold mt-2 text-foreground">{totalMessagesWeek} <span className="text-sm font-normal text-muted-foreground">msgs</span></h2>
+              <p className="text-xs text-indigo-300 font-semibold mt-1">
+                {totalSalesWeek} vendas ({conversionRateWeek}%)
+              </p>
+            </div>
+          ) : (
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
+              <div className="flex justify-between items-start">
+                <p className="text-sm font-medium text-muted-foreground">Vendas (Mês)</p>
+                <Target className="text-emerald-500 opacity-50" size={20} />
+              </div>
+              <h2 className="text-3xl font-bold mt-2 text-foreground">{totalSales}</h2>
+              <p className="text-xs text-muted-foreground mt-1">Pedidos convertidos</p>
+            </div>
+          )}
+
+          {/* Card 3: Vendas / Conversão */}
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Vendas (Mês)</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                {isCurrentMonth ? 'Vendas no Mês' : 'Conversão (Mês)'}
+              </p>
               <Target className="text-emerald-500 opacity-50" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{totalSales}</h2>
+            <h2 className="text-3xl font-bold mt-2 text-foreground">
+              {isCurrentMonth ? totalSales : `${conversionRate}%`}
+            </h2>
+            <p className="text-xs text-emerald-400 font-semibold mt-1">
+              {isCurrentMonth ? `Taxa média: ${conversionRate}%` : `${totalSales} pedidos pagos`}
+            </p>
           </div>
-          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Conversão (Mês)</p>
-              <BrainCircuit className="text-indigo-500 opacity-50" size={20} />
-            </div>
-            <h2 className="text-3xl font-bold mt-2">{conversionRate}%</h2>
-          </div>
+
+          {/* Card 4: Receita */}
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm bg-emerald-500/5">
             <div className="flex justify-between items-start">
               <p className="text-sm font-medium text-emerald-500">Receita Gerada</p>
               <DollarSign className="text-emerald-500" size={20} />
             </div>
             <h2 className="text-3xl font-black text-emerald-500 mt-2">{formatMoney(totalRevenue)}</h2>
+            {isCurrentMonth && totalRevenueWeek > 0 && (
+              <p className="text-xs text-emerald-400/80 font-medium mt-1">
+                {formatMoney(totalRevenueWeek)} nos últimos 7d
+              </p>
+            )}
           </div>
         </div>
 

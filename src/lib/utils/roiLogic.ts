@@ -12,6 +12,12 @@ export interface RoiStats {
   totalSales: number;
   totalRevenue: number;
   conversionRate: string;
+  totalMessagesToday: number;
+  totalSalesToday: number;
+  totalMessagesWeek: number;
+  totalSalesWeek: number;
+  totalRevenueWeek: number;
+  conversionRateWeek: string;
   campaignStats: Record<string, { msgs: number; sales: number; revenue: number }>;
   sellerStats: Record<string, { 
     msgsToday: number; 
@@ -35,6 +41,12 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
   let totalSales = 0;
   let totalRevenue = 0;
 
+  let totalMessagesToday = 0;
+  let totalSalesToday = 0;
+  let totalMessagesWeek = 0;
+  let totalSalesWeek = 0;
+  let totalRevenueWeek = 0;
+
   const campaignStats: Record<string, any> = {};
   const sellerStats: Record<string, any> = {};
 
@@ -54,6 +66,21 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
     
     if (hasSale) totalSales++;
     totalRevenue += revenue;
+
+    const intDateOnly = new Date(int.created_at);
+    intDateOnly.setHours(0, 0, 0, 0);
+
+    if (intDateOnly.getTime() === today.getTime()) {
+      totalMessagesToday++;
+      if (hasSale) totalSalesToday++;
+    }
+    if (intDateOnly.getTime() >= sevenDaysAgo.getTime()) {
+      totalMessagesWeek++;
+      if (hasSale) {
+        totalSalesWeek++;
+        totalRevenueWeek += revenue;
+      }
+    }
 
     // Por Campanha
     const campaignType = int.campaign_type || 'OUTROS';
@@ -76,10 +103,6 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
       };
     }
 
-    const intDate = new Date(int.created_at);
-    const intDateOnly = new Date(int.created_at);
-    intDateOnly.setHours(0, 0, 0, 0);
-
     if (intDateOnly.getTime() === today.getTime()) {
       sellerStats[seller].msgsToday++;
       if (hasSale) sellerStats[seller].salesToday++;
@@ -88,7 +111,7 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
       sellerStats[seller].msgsWeek++;
       if (hasSale) sellerStats[seller].salesWeek++;
     }
-    if (intDate.getMonth() === currentMonth && intDate.getFullYear() === currentYear) {
+    if (intDateOnly.getMonth() === currentMonth && intDateOnly.getFullYear() === currentYear) {
       sellerStats[seller].msgsMonth++;
       if (hasSale) sellerStats[seller].salesMonth++;
     }
@@ -107,12 +130,19 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
   });
 
   const conversionRate = totalMessages > 0 ? ((totalSales / totalMessages) * 100).toFixed(1) : '0.0';
+  const conversionRateWeek = totalMessagesWeek > 0 ? ((totalSalesWeek / totalMessagesWeek) * 100).toFixed(1) : '0.0';
 
   return {
     totalMessages,
     totalSales,
     totalRevenue,
     conversionRate,
+    totalMessagesToday,
+    totalSalesToday,
+    totalMessagesWeek,
+    totalSalesWeek,
+    totalRevenueWeek,
+    conversionRateWeek,
     campaignStats,
     sellerStats
   };
