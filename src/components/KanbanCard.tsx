@@ -73,8 +73,12 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
 
   // Texto padrão persuasivo do WhatsApp
   let wppText = `Olá ${client.name}, tudo bem?`;
-  if (campaignType.includes('CASHBACK')) {
+  if (campaignType === 'CORRIDA_ALPHAVILLE') {
+    wppText = `Olá ${client.name}, tudo bem? Sou da equipe da Alpha Bull e vimos que você participou da Corrida Alphaville! 🏃‍♂️🥩 Preparamos uma condição especial exclusiva para você repor as energias e conhecer nossos cortes nobres. Gostaria de dar uma olhadinha no nosso cardápio?`;
+  } else if (campaignType.includes('CASHBACK')) {
     wppText = `Olá ${client.name}! Vi que você tem ${formatMoney(client.cashback_balance)} em saldo de cashback disponível. Gostaria de aproveitar em sua próxima compra?`;
+  } else if (campaignType === 'POS_VENDA') {
+    wppText = `Olá ${client.name}, tudo bem? Passando para saber como foi sua experiência com os produtos da Alpha Bull. Deu tudo certo com o seu pedido?`;
   }
 
   const wppLink = `https://wa.me/55${client.phone}?text=${encodeURIComponent(wppText)}`;

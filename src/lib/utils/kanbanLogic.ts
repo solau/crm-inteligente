@@ -12,6 +12,7 @@ export interface ClientInteractions {
 }
 
 export interface KanbanColumns {
+  colCorridaAlphaville: KanbanClient[];
   colPosVenda: KanbanClient[];
   col1d: KanbanClient[];
   col5d: KanbanClient[];
@@ -57,6 +58,7 @@ export function getKanbanColumns(
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  const colCorridaAlphaville: KanbanClient[] = [];
   const colPosVenda: KanbanClient[] = [];
   const col1d: KanbanClient[] = [];
   const col5d: KanbanClient[] = [];
@@ -129,6 +131,28 @@ export function getKanbanColumns(
         }
       }
     }
+    // Prioridade 0: Corrida Alphaville (Novos Leads / Prospectos sem compra prévia)
+    const isCorrida = c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('corrida alphaville');
+    if (isCorrida && (!c.last_purchase_date || Number(c.total_spent) === 0)) {
+      let isBlockedCorrida = false;
+      if (lastInt) {
+        const intDate = parseSafeDate(lastInt.date);
+        if (intDate) {
+          const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceInt <= 0) {
+            isBlockedCorrida = true; // Se mandou mensagem hoje, não exibe
+          } else if (lastInt.campaign === 'CORRIDA_ALPHAVILLE' && daysSinceInt < 15) {
+            isBlockedCorrida = true; // Cooldown de 15 dias após contato
+          }
+        }
+      }
+
+      if (!isBlockedCorrida) {
+        colCorridaAlphaville.push(c);
+      }
+      continue;
+    }
+
     // Prioridade 1: Pós Venda
     // Regra:
     //   - Compra entre 1 e 7 dias atrás (só aparece a partir de 1 dia após a data da venda)
@@ -213,6 +237,7 @@ export function getKanbanColumns(
   }
 
   // Ordenações
+  colCorridaAlphaville.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colPosVenda.sort((a, b) => new Date(b.last_purchase_date!).getTime() - new Date(a.last_purchase_date!).getTime());
   
   col1d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
@@ -229,6 +254,7 @@ export function getKanbanColumns(
   const col90dLimited = col90d.slice(0, MAX_ABSENT);
 
   return {
+    colCorridaAlphaville,
     colPosVenda,
     col1d,
     col5d,
