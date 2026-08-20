@@ -38,9 +38,10 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
   const campaignStats: Record<string, any> = {};
   const sellerStats: Record<string, any> = {};
 
-  const todayStr = now.toISOString().split('T')[0];
-  
-  const sevenDaysAgo = new Date(now);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+
+  const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   
   const currentMonth = now.getMonth();
@@ -75,14 +76,15 @@ export function calculateRoiStats(interactions: InteractionRecord[], now: Date =
       };
     }
 
-    const intDateStr = int.created_at.split('T')[0];
     const intDate = new Date(int.created_at);
+    const intDateOnly = new Date(int.created_at);
+    intDateOnly.setHours(0, 0, 0, 0);
 
-    if (intDateStr === todayStr) {
+    if (intDateOnly.getTime() === today.getTime()) {
       sellerStats[seller].msgsToday++;
       if (hasSale) sellerStats[seller].salesToday++;
     }
-    if (intDate >= sevenDaysAgo) {
+    if (intDateOnly.getTime() >= sevenDaysAgo.getTime()) {
       sellerStats[seller].msgsWeek++;
       if (hasSale) sellerStats[seller].salesWeek++;
     }

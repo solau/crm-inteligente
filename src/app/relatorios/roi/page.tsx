@@ -143,13 +143,24 @@ export default async function RoiReportPage({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/10 text-muted-foreground">
-                  <tr>
-                    <th className="text-left py-3 px-4 font-medium whitespace-nowrap">Atendente</th>
-                    <th className="text-center py-3 px-4 font-medium">Msgs Enviadas</th>
-                    <th className="text-center py-3 px-4 font-medium">Vendas Convertidas</th>
-                    <th className="text-center py-3 px-4 font-medium">Taxa de Conversão</th>
-                    <th className="text-right py-3 px-4 font-medium">Receita Gerada</th>
-                  </tr>
+                  {selectedMonth === currentMonthStr ? (
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium whitespace-nowrap">Atendente</th>
+                      <th className="text-center py-3 px-4 font-medium">Hoje</th>
+                      <th className="text-center py-3 px-4 font-medium">Últimos 7 Dias</th>
+                      <th className="text-center py-3 px-4 font-medium">Total do Mês</th>
+                      <th className="text-center py-3 px-4 font-medium">Conversão (Mês)</th>
+                      <th className="text-right py-3 px-4 font-medium">Receita Gerada</th>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium whitespace-nowrap">Atendente</th>
+                      <th className="text-center py-3 px-4 font-medium">Msgs Enviadas</th>
+                      <th className="text-center py-3 px-4 font-medium">Vendas Convertidas</th>
+                      <th className="text-center py-3 px-4 font-medium">Taxa de Conversão</th>
+                      <th className="text-right py-3 px-4 font-medium">Receita Gerada</th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody className="divide-y divide-border">
                   {Object.entries(sellerStats).map(([seller, data]: any) => {
@@ -165,32 +176,64 @@ export default async function RoiReportPage({
                             </div>
                           )}
                         </td>
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span className="font-bold text-foreground text-base">{data.msgs}</span>
-                          <span className="text-xs text-muted-foreground ml-1">msgs</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span className="text-emerald-400 font-bold text-base">{data.sales}</span>
-                          <span className="text-xs text-muted-foreground ml-1">vendas</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
-                            Number(data.convRate) > 0 
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-zinc-800 text-zinc-400'
-                          }`}>
-                            {data.convRate}%
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-bold whitespace-nowrap text-emerald-400 text-base">
-                          {formatMoney(data.revenue)}
-                        </td>
+
+                        {isCurrentMonth ? (
+                          <>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="font-bold text-foreground">{data.msgsToday}</span> <span className="text-xs text-muted-foreground">msgs</span> <br/>
+                              <span className="text-emerald-400 font-semibold text-xs">{data.salesToday} vnd</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="font-bold text-foreground">{data.msgsWeek}</span> <span className="text-xs text-muted-foreground">msgs</span> <br/>
+                              <span className="text-emerald-400 font-semibold text-xs">{data.salesWeek} vnd</span> <span className="text-indigo-400 text-[11px]">({data.convRateWeek}%)</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="font-bold text-foreground text-base">{data.msgs}</span> <span className="text-xs text-muted-foreground">msgs</span> <br/>
+                              <span className="text-emerald-400 font-semibold text-xs">{data.sales} vnd</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                                Number(data.convRate) > 0 
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-zinc-800 text-zinc-400'
+                              }`}>
+                                {data.convRate}%
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-bold whitespace-nowrap text-emerald-400 text-base">
+                              {formatMoney(data.revenue)}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="font-bold text-foreground text-base">{data.msgs}</span>
+                              <span className="text-xs text-muted-foreground ml-1">msgs</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="text-emerald-400 font-bold text-base">{data.sales}</span>
+                              <span className="text-xs text-muted-foreground ml-1">vendas</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                                Number(data.convRate) > 0 
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-zinc-800 text-zinc-400'
+                              }`}>
+                                {data.convRate}%
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-bold whitespace-nowrap text-emerald-400 text-base">
+                              {formatMoney(data.revenue)}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
                   {Object.keys(sellerStats).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-muted-foreground">Sem dados registrados no período selecionado.</td>
+                      <td colSpan={6} className="py-8 text-center text-muted-foreground">Sem dados registrados no período selecionado.</td>
                     </tr>
                   )}
                 </tbody>
