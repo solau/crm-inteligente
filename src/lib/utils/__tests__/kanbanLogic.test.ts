@@ -23,6 +23,13 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colCorridaAlphaville[0].id).toBe('1');
   });
 
+  test('Deve colocar em LEADS_BPE25 se o lead tem tag BPE25 e não tem compra prévia', () => {
+    const lead = { ...baseClient, preferences: 'Origem: Leads BPE25', total_spent: 0, last_purchase_date: null };
+    const result = getKanbanColumns([lead], {}, new Set());
+    expect(result.colBpe25).toHaveLength(1);
+    expect(result.colBpe25[0].id).toBe('1');
+  });
+
   test('Deve colocar em POS_VENDA se a compra foi entre 1 e 7 dias atrás', () => {
     const client = { ...baseClient, last_purchase_date: createDate(-3) };
     const result = getKanbanColumns([client], {}, new Set());

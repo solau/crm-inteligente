@@ -13,6 +13,7 @@ export interface ClientInteractions {
 
 export interface KanbanColumns {
   colCorridaAlphaville: KanbanClient[];
+  colBpe25: KanbanClient[];
   colPosVenda: KanbanClient[];
   col1d: KanbanClient[];
   col5d: KanbanClient[];
@@ -59,6 +60,7 @@ export function getKanbanColumns(
   };
 
   const colCorridaAlphaville: KanbanClient[] = [];
+  const colBpe25: KanbanClient[] = [];
   const colPosVenda: KanbanClient[] = [];
   const col1d: KanbanClient[] = [];
   const col5d: KanbanClient[] = [];
@@ -131,6 +133,7 @@ export function getKanbanColumns(
         }
       }
     }
+
     // Prioridade 0: Corrida Alphaville (Novos Leads / Prospectos sem compra prévia)
     const isCorrida = c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('corrida alphaville');
     if (isCorrida && (!c.last_purchase_date || Number(c.total_spent) === 0)) {
@@ -149,6 +152,28 @@ export function getKanbanColumns(
 
       if (!isBlockedCorrida) {
         colCorridaAlphaville.push(c);
+      }
+      continue;
+    }
+
+    // Prioridade 0.1: Leads BPE25 (Novos Leads sem compra prévia)
+    const isBpe25 = c.preferences && typeof c.preferences === 'string' && (c.preferences.toLowerCase().includes('bpe25') || c.preferences.toLowerCase().includes('bpe'));
+    if (isBpe25 && (!c.last_purchase_date || Number(c.total_spent) === 0)) {
+      let isBlockedBpe25 = false;
+      if (lastInt) {
+        const intDate = parseSafeDate(lastInt.date);
+        if (intDate) {
+          const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceInt <= 0) {
+            isBlockedBpe25 = true; // Se mandou mensagem hoje, não exibe
+          } else if (lastInt.campaign === 'LEADS_BPE25' && daysSinceInt < 15) {
+            isBlockedBpe25 = true; // Cooldown de 15 dias após contato
+          }
+        }
+      }
+
+      if (!isBlockedBpe25) {
+        colBpe25.push(c);
       }
       continue;
     }
@@ -238,6 +263,7 @@ export function getKanbanColumns(
 
   // Ordenações
   colCorridaAlphaville.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  colBpe25.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colPosVenda.sort((a, b) => new Date(b.last_purchase_date!).getTime() - new Date(a.last_purchase_date!).getTime());
   
   col1d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
@@ -252,9 +278,11 @@ export function getKanbanColumns(
   const MAX_ABSENT = 1000;
   const col45dLimited = col45d.slice(0, MAX_ABSENT);
   const col90dLimited = col90d.slice(0, MAX_ABSENT);
+  const colBpe25Limited = colBpe25.slice(0, 1000);
 
   return {
     colCorridaAlphaville,
+    colBpe25: colBpe25Limited,
     colPosVenda,
     col1d,
     col5d,

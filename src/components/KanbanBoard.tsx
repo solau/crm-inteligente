@@ -53,6 +53,7 @@ export function KanbanBoard({ clients, session, lastInteractions = {} }: KanbanB
 
   const {
     colCorridaAlphaville,
+    colBpe25,
     colPosVenda,
     col1d,
     col5d,
@@ -65,6 +66,7 @@ export function KanbanBoard({ clients, session, lastInteractions = {} }: KanbanB
   return (
     <div className="flex gap-4 overflow-x-auto pb-6 pt-2 custom-scrollbar snap-x snap-mandatory">
       <KanbanColumn title="Corrida Alphaville" clients={colCorridaAlphaville} campaignType="CORRIDA_ALPHAVILLE" color="border-cyan-400" session={session} onMessageSent={handleMessageSent} />
+      <KanbanColumn title="Leads BPE25" clients={colBpe25} campaignType="LEADS_BPE25" color="border-emerald-400" session={session} onMessageSent={handleMessageSent} />
       <KanbanColumn title="Pós-Venda (<= 7d)" clients={colPosVenda} campaignType="POS_VENDA" color="border-sky-500" session={session} onMessageSent={handleMessageSent} />
       <KanbanColumn title="Expira HOJE" clients={col1d} campaignType="CASHBACK_1D" color="border-rose-500" session={session} onMessageSent={handleMessageSent} />
       <KanbanColumn title="Expira em < 5d" clients={col5d} campaignType="CASHBACK_5D" color="border-orange-500" session={session} onMessageSent={handleMessageSent} />
