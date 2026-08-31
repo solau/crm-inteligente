@@ -439,6 +439,15 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
     }
   };
 
+  // Dispara análise de IA para todos os funcionários em paralelo
+  const handleAnalyzeAll = async () => {
+    const pending = employeeStats.employees.filter(emp => !loadingAI[emp.name]);
+    await Promise.all(pending.map((emp, idx) => handleAnalyzeEmployee(emp.name, idx)));
+  };
+
+  const isAnyLoading = Object.values(loadingAI).some(Boolean);
+  const allAnalyzed = employeeStats.employees.length > 0 &&
+    employeeStats.employees.every(emp => !!aiAnalyses[emp.name]);
   // Variação MoM entre os dois últimos meses selecionados
   const momComparison = useMemo(() => {
     if (selectedMonths.length < 2) return null;
@@ -1209,12 +1218,33 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setShowPerformanceModal(false)}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAnalyzeAll}
+                disabled={isAnyLoading || allAnalyzed}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                  allAnalyzed
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 cursor-default'
+                    : isAnyLoading
+                    ? 'bg-violet-500/10 text-violet-400 border-violet-500/30 cursor-not-allowed opacity-70'
+                    : 'bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border-violet-600/30 active:scale-95'
+                }`}
+              >
+                {allAnalyzed ? (
+                  <><Sparkles className="w-3.5 h-3.5" /> Todos Analisados</>
+                ) : isAnyLoading ? (
+                  <><Zap className="w-3.5 h-3.5 animate-pulse" /> Gerando...</>
+                ) : (
+                  <><BrainCircuit className="w-3.5 h-3.5" /> Gerar Análise de Todos</>
+                )}
+              </button>
+              <button
+                onClick={() => setShowPerformanceModal(false)}
+                className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <div className="p-6 space-y-6">
