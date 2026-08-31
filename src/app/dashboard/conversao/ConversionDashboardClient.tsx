@@ -13,11 +13,18 @@ import {
   Sparkles, 
   Award, 
   ChevronDown, 
-  ChevronRight, 
-  Filter, 
+  ChevronRight,
   Maximize2, 
   Minimize2,
-  Tag
+  Tag,
+  X,
+  BrainCircuit,
+  Zap,
+  AlertTriangle,
+  BarChart2,
+  Trophy,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 export interface RawInteraction {
@@ -97,6 +104,11 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
   const [selectedMonths, setSelectedMonths] = useState<string[]>(allMonths);
   const [activeView, setActiveView] = useState<'SELLER_FIRST' | 'CAMPAIGN_FIRST'>('SELLER_FIRST');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(allSellers));
+
+  // Estados do Modal de Desempenho
+  const [showPerformanceModal, setShowPerformanceModal] = useState(false);
+  const [aiAnalyses, setAiAnalyses] = useState<Record<string, string>>({});
+  const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({});
 
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -244,6 +256,189 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
     };
   }, [interactions, allMonths, selectedSeller, selectedCampaign, selectedMonths]);
 
+  // ─── Cálculo de Stats por Funcionário para o Modal de Desempenho ───────────
+  const employeeStats = useMemo(() => {
+    // Agrupa por vendedor (todos os meses selecionados)
+    const statsMap: Record<string, {
+      name: string;
+      totalMsgs: number;
+      totalSales: number;
+      revenue: number;
+      campaigns: Record<string, { msgs: number; sales: number; revenue: number }>;
+    }> = {};
+
+    interactions.forEach(i => {
+      const month = i.created_at.slice(0, 7);
+      if (!selectedMonths.includes(month)) return;
+
+      const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
+      const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
+      const campaign = i.campaign_type || 'OUTROS';
+      const hasSale = i.sales_attribution && i.sales_attribution.length > 0;
+      const rev = hasSale ? i.sales_attribution!.reduce((acc, cur) => acc + Number(cur.revenue), 0) : 0;
+
+      if (!statsMap[seller]) {
+        statsMap[seller] = { name: seller, totalMsgs: 0, totalSales: 0, revenue: 0, campaigns: {} };
+      }
+      statsMap[seller].totalMsgs++;
+      if (hasSale) statsMap[seller].totalSales++;
+      statsMap[seller].revenue += rev;
+
+      if (!statsMap[seller].campaigns[campaign]) {
+        statsMap[seller].campaigns[campaign] = { msgs: 0, sales: 0, revenue: 0 };
+      }
+      statsMap[seller].campaigns[campaign].msgs++;
+      if (hasSale) statsMap[seller].campaigns[campaign].sales++;
+      statsMap[seller].campaigns[campaign].revenue += rev;
+    });
+
+    // Calcular dias do período selecionado para meta pro-rated
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const DAILY_GOAL = 60;
+
+    let totalDays = 0;
+    selectedMonths.forEach(m => {
+      const [y, mo] = m.split('-').map(Number);
+      if (m === currentMonthStr) {
+        // Pro-rated: só os dias passados no mês atual
+        totalDays += now.getDate();
+      } else {
+        // Mês completo
+        const daysInMonth = new Date(y, mo, 0).getDate();
+        totalDays += daysInMonth;
+      }
+    });
+    const targetMsgs = totalDays * DAILY_GOAL;
+
+    // Calcular stats de equipe para benchmark
+    const allStats = Object.values(statsMap).filter(s => s.name !== 'Sistema / Sem Vendedor');
+    const teamAvgMsgs = allStats.length > 0 ? allStats.reduce((a, s) => a + s.totalMsgs, 0) / allStats.length : 0;
+    const teamAvgConv = allStats.length > 0
+      ? allStats.reduce((a, s) => a + (s.totalMsgs > 0 ? s.totalSales / s.totalMsgs : 0), 0) / allStats.length * 100
+      : 0;
+    const teamAvgRevenue = allStats.length > 0 ? allStats.reduce((a, s) => a + s.revenue, 0) / allStats.length : 0;
+
+    // Calcular MoM (se >= 2 meses selecionados)
+    const momData: Record<string, { msgsChange: number | null; convChange: number | null }> = {};
+    if (selectedMonths.length >= 2) {
+      const sorted = [...selectedMonths].sort();
+      const prevM = sorted[sorted.length - 2];
+      const currM = sorted[sorted.length - 1];
+
+      interactions.forEach(i => {
+        const month = i.created_at.slice(0, 7);
+        if (month !== prevM && month !== currM) return;
+        const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
+        const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
+        if (!momData[seller]) momData[seller] = { msgsChange: null, convChange: null };
+      });
+
+      // Calcula por mês
+      const perMonth: Record<string, Record<string, { msgs: number; sales: number }>> = {};
+      interactions.forEach(i => {
+        const month = i.created_at.slice(0, 7);
+        if (month !== prevM && month !== currM) return;
+        const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
+        const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
+        const hasSale = i.sales_attribution && i.sales_attribution.length > 0;
+        if (!perMonth[seller]) perMonth[seller] = {};
+        if (!perMonth[seller][month]) perMonth[seller][month] = { msgs: 0, sales: 0 };
+        perMonth[seller][month].msgs++;
+        if (hasSale) perMonth[seller][month].sales++;
+      });
+
+      Object.keys(perMonth).forEach(seller => {
+        const prev = perMonth[seller][prevM] || { msgs: 0, sales: 0 };
+        const curr = perMonth[seller][currM] || { msgs: 0, sales: 0 };
+        const msgsChange = prev.msgs > 0 ? ((curr.msgs - prev.msgs) / prev.msgs) * 100 : curr.msgs > 0 ? 100 : 0;
+        const prevConv = prev.msgs > 0 ? prev.sales / prev.msgs : 0;
+        const currConv = curr.msgs > 0 ? curr.sales / curr.msgs : 0;
+        const convChange = prevConv > 0 ? ((currConv - prevConv) / prevConv) * 100 : currConv > 0 ? 100 : 0;
+        momData[seller] = { msgsChange, convChange };
+      });
+    }
+
+    // Montar array final ordenado por taxa de conversão DESC
+    const result = allStats.map(s => {
+      const convRate = s.totalMsgs > 0 ? (s.totalSales / s.totalMsgs) * 100 : 0;
+      const campaigns = Object.entries(s.campaigns)
+        .map(([name, d]) => ({ name, ...d, convRate: d.msgs > 0 ? (d.sales / d.msgs) * 100 : 0 }))
+        .sort((a, b) => b.convRate - a.convRate);
+      const bestCampaign = campaigns[0] || { name: 'N/A', convRate: 0 };
+      const worstCampaign = campaigns.filter(c => c.msgs > 0)[campaigns.filter(c => c.msgs > 0).length - 1] || { name: 'N/A', convRate: 0 };
+      return {
+        name: s.name,
+        totalMsgs: s.totalMsgs,
+        totalSales: s.totalSales,
+        revenue: s.revenue,
+        convRate,
+        campaigns,
+        bestCampaign,
+        worstCampaign,
+        targetMsgs,
+        totalDays,
+        teamAvgMsgs,
+        teamAvgConv,
+        teamAvgRevenue,
+        momMsgsChange: momData[s.name]?.msgsChange ?? null,
+        momConvChange: momData[s.name]?.convChange ?? null,
+      };
+    }).sort((a, b) => b.convRate - a.convRate);
+
+    return { employees: result, targetMsgs, totalDays, teamAvgMsgs, teamAvgConv, teamAvgRevenue };
+  }, [interactions, selectedMonths]);
+
+  // Função para chamar análise de IA por funcionário
+  const handleAnalyzeEmployee = async (employeeName: string, idx: number) => {
+    const emp = employeeStats.employees[idx];
+    if (!emp) return;
+
+    setLoadingAI(prev => ({ ...prev, [employeeName]: true }));
+    try {
+      const periodLabel = selectedMonths.length === 1
+        ? (monthLabels[selectedMonths[0]] || selectedMonths[0])
+        : selectedMonths.map(m => monthLabels[m] || m).join(' + ');
+
+      const payload = {
+        name: emp.name,
+        period: periodLabel,
+        totalMsgs: emp.totalMsgs,
+        targetMsgs: emp.targetMsgs,
+        totalSales: emp.totalSales,
+        convRate: emp.convRate,
+        revenue: emp.revenue,
+        bestCampaign: emp.bestCampaign.name,
+        bestCampaignConvRate: emp.bestCampaign.convRate,
+        worstCampaign: emp.worstCampaign.name,
+        worstCampaignConvRate: emp.worstCampaign.convRate,
+        momMsgsChange: emp.momMsgsChange,
+        momConvChange: emp.momConvChange,
+        teamAvgMsgs: employeeStats.teamAvgMsgs,
+        teamAvgConv: employeeStats.teamAvgConv,
+        teamAvgRevenue: employeeStats.teamAvgRevenue,
+        rank: idx + 1,
+        totalSellers: employeeStats.employees.length,
+      };
+
+      const res = await fetch('/api/ai/desempenho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiAnalyses(prev => ({ ...prev, [employeeName]: data.analysis }));
+      } else {
+        setAiAnalyses(prev => ({ ...prev, [employeeName]: '⚠️ Erro ao gerar análise. Tente novamente.' }));
+      }
+    } catch {
+      setAiAnalyses(prev => ({ ...prev, [employeeName]: '⚠️ Erro de comunicação com a IA.' }));
+    } finally {
+      setLoadingAI(prev => ({ ...prev, [employeeName]: false }));
+    }
+  };
+
   // Variação MoM entre os dois últimos meses selecionados
   const momComparison = useMemo(() => {
     if (selectedMonths.length < 2) return null;
@@ -300,8 +495,8 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
               </p>
             </div>
 
-            {/* Controles de Expansão Rápida */}
-            <div className="flex items-center gap-2">
+            {/* Controles de Expansão + Botão Análise de Desempenho */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={expandAll}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
@@ -313,6 +508,13 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
               >
                 <Minimize2 className="w-3.5 h-3.5" /> Recolher Todos
+              </button>
+              <button
+                onClick={() => setShowPerformanceModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white transition-all shadow-lg shadow-violet-500/20 border border-violet-500/40 active:scale-95"
+              >
+                <BrainCircuit className="w-4 h-4" />
+                Análise de Desempenho
               </button>
             </div>
           </div>
@@ -983,5 +1185,244 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
 
       </div>
     </div>
+
+    {/* ═══════════════════════════════════════════════════════
+        MODAL DE ANÁLISE DE DESEMPENHO POR FUNCIONÁRIO
+    ═══════════════════════════════════════════════════════ */}
+    {showPerformanceModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4"
+        onClick={(e) => { if (e.target === e.currentTarget) setShowPerformanceModal(false); }}
+      >
+        <div className="relative w-full max-w-4xl my-6 bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl shadow-violet-500/10 overflow-hidden">
+
+          {/* Header do Modal */}
+          <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-violet-500/15 rounded-xl text-violet-400">
+                <BarChart2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-white tracking-tight">Análise de Desempenho por Funcionário</h2>
+                <p className="text-xs text-zinc-400">
+                  Período: {selectedMonths.map(m => monthLabels[m] || m).join(' + ')} · {employeeStats.employees.length} atendentes analisados
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowPerformanceModal(false)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-6">
+
+            {/* Banner da Meta */}
+            <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-300">Meta Mínima Obrigatória: 60 mensagens por dia por funcionário</p>
+                <p className="text-xs text-amber-400/70 mt-0.5">
+                  Para este período ({employeeStats.totalDays} dias úteis considerados): a meta é de{' '}
+                  <span className="font-black text-amber-300">{employeeStats.targetMsgs} mensagens</span> por atendente.
+                  Meta mensal cheia: <span className="font-bold">1.800 msgs</span> · Semanal: <span className="font-bold">420 msgs</span>.
+                </p>
+              </div>
+            </div>
+
+            {/* Ranking rápido */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {employeeStats.employees.slice(0, 3).map((emp, i) => (
+                <div
+                  key={emp.name}
+                  className={`flex items-center gap-3 p-3 rounded-2xl border ${
+                    i === 0
+                      ? 'bg-amber-500/10 border-amber-500/30'
+                      : i === 1
+                      ? 'bg-zinc-800/50 border-zinc-700'
+                      : 'bg-zinc-800/30 border-zinc-700/50'
+                  }`}
+                >
+                  <span className={`text-2xl font-black ${
+                    i === 0 ? 'text-amber-400' : i === 1 ? 'text-zinc-300' : 'text-amber-700'
+                  }`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{emp.name}</p>
+                    <p className="text-[10px] text-zinc-400">{emp.convRate.toFixed(1)}% conversão</p>
+                    {i === 0 && <p className="text-[10px] text-amber-400 font-bold">🏆 Campeão do mês</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Cards por Funcionário */}
+            <div className="space-y-4">
+              {employeeStats.employees.map((emp, idx) => {
+                const diffMsgs = emp.totalMsgs - emp.targetMsgs;
+                const aboveMeta = diffMsgs >= 0;
+                const convAboveMeta = emp.convRate >= 6;
+                const aiText = aiAnalyses[emp.name];
+                const isLoadingAI = loadingAI[emp.name];
+
+                return (
+                  <div
+                    key={emp.name}
+                    className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
+                  >
+                    {/* Cabeçalho do Card */}
+                    <div className="flex items-center justify-between p-4 pb-3 border-b border-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${
+                            idx === 0 ? 'bg-amber-500/20 text-amber-400' : 'bg-violet-500/20 text-violet-400'
+                          }`}>
+                            {emp.name.charAt(0).toUpperCase()}
+                          </div>
+                          {idx === 0 && (
+                            <span className="absolute -top-1 -right-1 text-xs">🏆</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-white">{emp.name}</p>
+                          <p className="text-[10px] text-zinc-500">{idx + 1}º lugar · {emp.campaigns.length} campanhas ativas</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAnalyzeEmployee(emp.name, idx)}
+                        disabled={isLoadingAI}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600/20 hover:bg-violet-600/40 text-violet-300 border border-violet-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoadingAI ? (
+                          <><Zap className="w-3.5 h-3.5 animate-pulse" /> Analisando...</>
+                        ) : (
+                          <><BrainCircuit className="w-3.5 h-3.5" /> Analisar com IA</>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* KPIs do funcionário */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-zinc-800">
+                      {/* Msgs vs Meta */}
+                      <div className="p-4">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Msgs Enviadas</p>
+                        <p className={`text-xl font-black ${ aboveMeta ? 'text-emerald-400' : 'text-rose-400' }`}>
+                          {emp.totalMsgs}
+                        </p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">Meta mín: {emp.targetMsgs}</p>
+                        <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ aboveMeta ? 'text-emerald-400' : 'text-rose-400' }`}>
+                          {aboveMeta ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                          {aboveMeta ? '+' : ''}{diffMsgs} msgs vs meta
+                        </div>
+                        {/* Barra de progresso */}
+                        <div className="mt-2 h-1.5 w-full bg-zinc-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${ aboveMeta ? 'bg-emerald-500' : 'bg-rose-500' }`}
+                            style={{ width: `${Math.min(100, (emp.totalMsgs / emp.targetMsgs) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-[9px] text-zinc-600 mt-0.5">{((emp.totalMsgs / emp.targetMsgs) * 100).toFixed(0)}% da meta (mín. 60/dia)</p>
+                      </div>
+
+                      {/* Conversão */}
+                      <div className="p-4">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Taxa de Conversão</p>
+                        <p className={`text-xl font-black ${ convAboveMeta ? 'text-emerald-400' : 'text-amber-400' }`}>
+                          {emp.convRate.toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">Meta: 6% | {emp.totalSales} vendas</p>
+                        {emp.momConvChange !== null && (
+                          <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ emp.momConvChange >= 0 ? 'text-emerald-400' : 'text-rose-400' }`}>
+                            {emp.momConvChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            {emp.momConvChange >= 0 ? '+' : ''}{emp.momConvChange.toFixed(1)}% vs mês ant.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Receita */}
+                      <div className="p-4">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Receita Gerada</p>
+                        <p className="text-lg font-black text-emerald-400">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(emp.revenue)}
+                        </p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Ticket médio: {emp.totalSales > 0
+                            ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(emp.revenue / emp.totalSales)
+                            : 'R$ 0,00'}
+                        </p>
+                        <div className={`mt-1.5 text-[10px] font-semibold ${ emp.revenue >= employeeStats.teamAvgRevenue ? 'text-emerald-400' : 'text-zinc-400' }`}>
+                          {emp.revenue >= employeeStats.teamAvgRevenue ? '↑ Acima' : '↓ Abaixo'} da média da equipe
+                        </div>
+                      </div>
+
+                      {/* Melhor campanha */}
+                      <div className="p-4">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Melhor Campanha</p>
+                        <p className="text-sm font-bold text-indigo-300 leading-tight">
+                          {emp.bestCampaign.name !== 'N/A' ? ({
+                            'CASHBACK_1D': '⏰ Cashback 1D',
+                            'CASHBACK_5D': '⚡ Cashback 5D',
+                            'CASHBACK_10D': '🎁 Cashback 10D',
+                            'CASHBACK_15D': '🔥 Cashback 15D',
+                            'AUSENTE_45D': '💤 Ausente 45D',
+                            'OFERTA_90D': '🛡️ Inativo 90D',
+                            'POS_VENDA': '🤝 Pós-Venda',
+                            'CORRIDA_ALPHAVILLE': '🏃 Corrida',
+                            'LEADS_BPE25': '🎯 Leads BPE25',
+                          } as Record<string,string>)[emp.bestCampaign.name] || emp.bestCampaign.name : 'N/A'}
+                        </p>
+                        <p className="text-[10px] text-zinc-500 mt-1">{emp.bestCampaign.convRate.toFixed(1)}% conversão</p>
+                        {emp.momMsgsChange !== null && (
+                          <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ emp.momMsgsChange >= 0 ? 'text-sky-400' : 'text-rose-400' }`}>
+                            {emp.momMsgsChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            Msgs: {emp.momMsgsChange >= 0 ? '+' : ''}{emp.momMsgsChange.toFixed(1)}% MoM
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Análise IA */}
+                    {(aiText || isLoadingAI) && (
+                      <div className="px-4 pb-4">
+                        <div className="p-3.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <BrainCircuit className="w-3.5 h-3.5 text-violet-400" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Análise da IA — Pontos de Melhoria</span>
+                          </div>
+                          {isLoadingAI ? (
+                            <div className="flex items-center gap-2 text-xs text-zinc-400">
+                              <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                              <span>Gemini analisando dados...</span>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-zinc-200 leading-relaxed">{aiText}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer do Modal */}
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+              <p className="text-[10px] text-zinc-600">
+                ⚡ Clique em "Analisar com IA" em cada card para gerar análise individual com pontos de melhoria.
+              </p>
+              <button
+                onClick={() => setShowPerformanceModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }

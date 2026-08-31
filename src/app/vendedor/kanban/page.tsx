@@ -264,10 +264,10 @@ export default async function KanbanPage() {
                 <div className="flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">Hoje (Meta)</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-lg font-black leading-none ${msgs1d >= 30 ? 'text-emerald-500' : 'text-white/90'}`}>
+                    <span className={`text-lg font-black leading-none ${msgs1d >= 60 ? 'text-emerald-500' : 'text-white/90'}`}>
                       {msgs1d}
                     </span>
-                    <span className="text-xs font-medium text-white/30 leading-none">/ 30</span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 60</span>
                   </div>
                   <div className="mt-1 flex items-center gap-1">
                     <span className={`text-[10px] font-bold ${diffMsgs1d > 0 ? 'text-emerald-500' : diffMsgs1d < 0 ? 'text-red-400' : 'text-white/50'}`}>
@@ -281,10 +281,10 @@ export default async function KanbanPage() {
                 <div className="border-l border-white/10 pl-6 flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">7 Dias</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-lg font-black leading-none ${msgs7d >= 210 ? 'text-emerald-500' : 'text-white/90'}`}>
+                    <span className={`text-lg font-black leading-none ${msgs7d >= 420 ? 'text-emerald-500' : 'text-white/90'}`}>
                       {msgs7d}
                     </span>
-                    <span className="text-xs font-medium text-white/30 leading-none">/ 210</span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 420</span>
                   </div>
                   <div className="mt-1 flex items-center gap-1">
                     <span className={`text-[10px] font-bold ${diffMsgs7d > 0 ? 'text-emerald-500' : diffMsgs7d < 0 ? 'text-red-400' : 'text-white/50'}`}>
@@ -298,10 +298,10 @@ export default async function KanbanPage() {
                 <div className="border-l border-white/10 pl-6 flex flex-col">
                   <p className="text-[10px] uppercase tracking-wider text-white/50">30 Dias</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`text-lg font-black leading-none ${msgs30d >= 900 ? 'text-emerald-500' : 'text-white/90'}`}>
+                    <span className={`text-lg font-black leading-none ${msgs30d >= 1800 ? 'text-emerald-500' : 'text-white/90'}`}>
                       {msgs30d}
                     </span>
-                    <span className="text-xs font-medium text-white/30 leading-none">/ 900</span>
+                    <span className="text-xs font-medium text-white/30 leading-none">/ 1800</span>
                   </div>
                   <div className="mt-1 flex items-center gap-1">
                     <span className={`text-[10px] font-bold ${diffMsgs30d > 0 ? 'text-emerald-500' : diffMsgs30d < 0 ? 'text-red-400' : 'text-white/50'}`}>
