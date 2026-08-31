@@ -481,6 +481,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
   }, [selectedMonths, monthTotals, monthLabels]);
 
   return (
+    <>
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-8 text-foreground">
       <div className="max-w-7xl mx-auto space-y-8">
         
@@ -1195,9 +1196,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       </div>
     </div>
 
-    {/* ═══════════════════════════════════════════════════════
-        MODAL DE ANÁLISE DE DESEMPENHO POR FUNCIONÁRIO
-    ═══════════════════════════════════════════════════════ */}
+    {/* MODAL DE ANALISE DE DESEMPENHO POR FUNCIONARIO */}
     {showPerformanceModal && (
       <div
         className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4"
@@ -1454,5 +1453,6 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
         </div>
       </div>
     )}
+    </>
   );
 }
