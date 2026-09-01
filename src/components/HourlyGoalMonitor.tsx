@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   BellRing,
   Calendar,
-  Sparkles
+  Sparkles,
+  RotateCcw
 } from 'lucide-react';
 
 interface HourlyGoalMonitorProps {
@@ -58,7 +59,8 @@ const getBrasiliaTime = (date: Date = new Date()) => {
     second,
     dayOfWeek,
     isSunday: dayOfWeek === 0,
-    formattedTime: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    formattedTime: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    currentHourKey: `${year}-${month}-${day}-${hour}` // chave única por hora
   };
 };
 
@@ -69,7 +71,7 @@ export default function HourlyGoalMonitor({
   compact = false
 }: HourlyGoalMonitorProps) {
   const [msgsToday, setMsgsToday] = useState<number>(initialMsgsToday ?? 0);
-  const [isMuted, setIsMuted] = useState(false);
+  const [mutedHourKey, setMutedHourKey] = useState<string | null>(null);
   const [isPlayingSiren, setIsPlayingSiren] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -82,13 +84,26 @@ export default function HourlyGoalMonitor({
   const lfoGainRef = useRef<GainNode | null>(null);
   const sirenTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Armazena qual hora já tocou a sirene para não repetir em loop dentro da mesma hora
+  const lastTriggeredHourKeyRef = useRef<string | null>(null);
+
   const DAILY_GOAL = 60;
 
-  // Atualizar hora corrente no cliente a cada 30s
+  // Atualizar hora corrente no cliente a cada 15s
   useEffect(() => {
     setCurrentTime(new Date());
-    const interval = setInterval(() => setCurrentTime(new Date()), 30000);
+    const interval = setInterval(() => setCurrentTime(new Date()), 15000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Recuperar estado de mute da sessão para a hora atual
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('siren_muted_hour');
+      if (saved) {
+        setMutedHourKey(saved);
+      }
+    } catch (e) {}
   }, []);
 
   // Buscar mensagens atualizadas do vendedor a cada 60s
@@ -115,7 +130,7 @@ export default function HourlyGoalMonitor({
     return () => clearInterval(interval);
   }, [fetchTodayMsgs]);
 
-  // Cálculo da Meta Horária com Fuso de Brasília (Seg-Sáb: 09h-19h / Dom: 10h-16h)
+  // Cálculo da Meta Horária com Fuso de Brasília
   const calculation = (() => {
     if (!currentTime) {
       return {
@@ -129,20 +144,20 @@ export default function HourlyGoalMonitor({
         ratePerHour: 6,
         progressPercent: 0,
         isShiftEnded: false,
-        isShiftNotStarted: false
+        isShiftNotStarted: false,
+        currentHourKey: '',
+        nextHourStr: '',
+        isCurrentlyMuted: false
       };
     }
 
     const brTime = getBrasiliaTime(currentTime);
-    const { hour, minute, isSunday, formattedTime } = brTime;
+    const { hour, minute, isSunday, formattedTime, currentHourKey } = brTime;
 
-    // Regras de Horário por Dia da Semana no Brasil:
-    // - Domingo: 10:00 às 16:00 (6 horas úteis -> 60/6 = 10 msgs/hora)
-    // - Segunda a Sábado: 09:00 às 19:00 (10 horas úteis -> 60/10 = 6 msgs/hora)
     const startHour = isSunday ? 10 : 9;
     const endHour = isSunday ? 16 : 19;
-    const totalShiftHours = endHour - startHour; // 6h no Dom / 10h nos outros dias
-    const ratePerHour = Math.round(DAILY_GOAL / totalShiftHours); // 10 msgs/h no Dom, 6 msgs/h Seg-Sáb
+    const totalShiftHours = endHour - startHour;
+    const ratePerHour = Math.round(DAILY_GOAL / totalShiftHours); // 10 msgs/h Dom, 6 msgs/h Seg-Sáb
 
     const currentDecimalHour = hour + (minute / 60);
 
@@ -178,6 +193,13 @@ export default function HourlyGoalMonitor({
       ? 'Domingo: 10h às 16h (Ritmo: 10 msgs/hora)'
       : 'Segunda a Sábado: 09h às 19h (Ritmo: 6 msgs/hora)';
 
+    // Próxima hora formatada para o rearme do alarme
+    const nextHour = (hour + 1) % 24;
+    const nextHourStr = `${String(nextHour).padStart(2, '0')}:00`;
+
+    // O alarme só está mutado se a chave mutada for EXATAMENTE a hora atual
+    const isCurrentlyMuted = mutedHourKey === currentHourKey;
+
     return {
       expectedMsgs,
       deficit,
@@ -189,7 +211,10 @@ export default function HourlyGoalMonitor({
       ratePerHour,
       progressPercent,
       isShiftEnded,
-      isShiftNotStarted
+      isShiftNotStarted,
+      currentHourKey,
+      nextHourStr,
+      isCurrentlyMuted
     };
   })();
 
@@ -210,7 +235,6 @@ export default function HourlyGoalMonitor({
 
       stopSiren();
 
-      // Oscilador principal de sirene (sweep 600Hz a 950Hz)
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -248,7 +272,7 @@ export default function HourlyGoalMonitor({
         stopSiren();
       }, durationMs);
     } catch (err) {
-      console.warn('Web Audio API não inicializada ou bloqueada pelo navegador:', err);
+      console.warn('Web Audio API não inicializada:', err);
     }
   }, []);
 
@@ -276,19 +300,39 @@ export default function HourlyGoalMonitor({
     setIsPlayingSiren(false);
   }, []);
 
-  // Tocar sirene quando detectar atraso no ritmo
-  const hasTriggeredSirenRef = useRef(false);
+  // REARME AUTOMÁTICO NA PRÓXIMA HORA:
+  // Dispara a sirene uma vez por hora cheia caso o usuário continue em déficit
   useEffect(() => {
-    if (calculation.isBehind && !isMuted && !hasTriggeredSirenRef.current && currentTime) {
-      hasTriggeredSirenRef.current = true;
-      startSiren(4000);
+    if (
+      calculation.isBehind && 
+      !calculation.isCurrentlyMuted && 
+      calculation.currentHourKey && 
+      lastTriggeredHourKeyRef.current !== calculation.currentHourKey
+    ) {
+      lastTriggeredHourKeyRef.current = calculation.currentHourKey;
+      startSiren(4000); // toca 4s de sirene
     }
-  }, [calculation.isBehind, isMuted, currentTime, startSiren]);
+  }, [calculation.isBehind, calculation.isCurrentlyMuted, calculation.currentHourKey, startSiren]);
+
+  // Função para pausar a sirene apenas até a próxima hora cheia
+  const handleToggleMute = () => {
+    if (calculation.isCurrentlyMuted) {
+      // Desmutar imediatamente
+      setMutedHourKey(null);
+      try { sessionStorage.removeItem('siren_muted_hour'); } catch (e) {}
+      startSiren(2500); // feedback sonoro
+    } else {
+      // Mutar apenas durante a hora atual (expira na próxima hora cheia)
+      stopSiren();
+      setMutedHourKey(calculation.currentHourKey);
+      try { sessionStorage.setItem('siren_muted_hour', calculation.currentHourKey); } catch (e) {}
+    }
+  };
 
   return (
     <div className={`w-full transition-all duration-500 ${className}`}>
       {calculation.isBehind ? (
-        // 🚨 BANNER DE ALERTA: ABAIXO DA META HORÁRIA NO HORÁRIO DO BRASIL
+        // 🚨 BANNER DE ALERTA: ABAIXO DA META HORÁRIA
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-rose-950/95 via-red-900/70 to-zinc-900/95 border-2 border-rose-500/70 p-5 md:p-6 shadow-2xl shadow-rose-950/60">
           
           {/* Luz de Sirene de Fundo */}
@@ -326,8 +370,14 @@ export default function HourlyGoalMonitor({
                 </h3>
 
                 <p className="text-xs md:text-sm text-zinc-300 leading-relaxed max-w-3xl">
-                  {sellerName ? `${sellerName}, você` : 'Você'} enviou <strong className="text-white font-black">{msgsToday}</strong> mensagens hoje, mas a meta esperada até às {calculation.formattedTime} é de no mínimo <strong className="text-amber-300 font-black">{calculation.expectedMsgs} mensagens</strong> ({calculation.ratePerHour} mensagens/hora no turno de {calculation.isSunday ? 'Domingo (10h às 16h)' : 'Segunda a Sábado (09h às 19h)'}).
+                  {sellerName ? `${sellerName}, você` : 'Você'} enviou <strong className="text-white font-black">{msgsToday}</strong> mensagens hoje, mas a meta esperada até às {calculation.formattedTime} é de no mínimo <strong className="text-amber-300 font-black">{calculation.expectedMsgs} mensagens</strong> ({calculation.ratePerHour} msgs/hora no turno de {calculation.isSunday ? 'Domingo (10h às 16h)' : 'Segunda a Sábado (09h às 19h)'}).
                 </p>
+
+                {calculation.isCurrentlyMuted && (
+                  <p className="text-[11px] text-amber-300/90 font-semibold flex items-center gap-1 mt-1">
+                    <VolumeX className="w-3.5 h-3.5" /> Alarme pausado temporariamente. A sirene voltará a soar automaticamente às {calculation.nextHourStr} se a meta não for atingida.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -364,18 +414,25 @@ export default function HourlyGoalMonitor({
                 </button>
 
                 <button
-                  onClick={() => {
-                    if (!isMuted) stopSiren();
-                    setIsMuted(!isMuted);
-                  }}
-                  className={`p-2 rounded-xl text-xs font-bold transition-all border ${
-                    isMuted
-                      ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                  onClick={handleToggleMute}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    calculation.isCurrentlyMuted
+                      ? 'bg-amber-950/80 text-amber-300 border-amber-500/40 hover:bg-amber-900'
                       : 'bg-rose-950 text-rose-300 border-rose-600/40 hover:bg-rose-900'
                   }`}
-                  title={isMuted ? 'Desmutar sirene' : 'Silenciar sirene'}
+                  title={calculation.isCurrentlyMuted ? 'Reativar alarme de sirene' : `Pausar sirene até às ${calculation.nextHourStr}`}
                 >
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  {calculation.isCurrentlyMuted ? (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Pausado até {calculation.nextHourStr}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-rose-300" />
+                      <span>Silenciar até {calculation.nextHourStr}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
