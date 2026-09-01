@@ -22,6 +22,7 @@ import {
   History
 } from 'lucide-react';
 import { CampaignMonthStats } from '@/app/api/ai/meu-desempenho/route';
+import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
 
 export interface RawSellerInteraction {
   id: string;
@@ -385,6 +386,9 @@ export default function MeuDesempenhoClient({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-16">
       
+      {/* Alerta de Ritmo Horário e Sirene */}
+      <HourlyGoalMonitor sellerName={sellerName} />
+
       {/* 1. Header do Vendedor com Seletor de Mês */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-2">
         <div className="flex items-center gap-4">

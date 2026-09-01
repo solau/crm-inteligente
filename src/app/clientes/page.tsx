@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
 import { Search, User, Phone, ChevronRight, Clock, AlertCircle, RefreshCw, ChevronLeft } from 'lucide-react';
+import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
 
 export default async function ClientesPage({
   searchParams,
@@ -121,6 +122,9 @@ export default async function ClientesPage({
           <p className="text-muted-foreground mt-1">Busque e acesse o dossiê 360º de seus contatos.</p>
         </div>
       </div>
+
+      {/* Monitor Horário de Mensagens com Alerta Sonoro de Sirene */}
+      <HourlyGoalMonitor />
 
       {/* Filtros e Busca */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center bg-card/50 backdrop-blur-xl border border-border/50 rounded-2xl p-4 shadow-sm">

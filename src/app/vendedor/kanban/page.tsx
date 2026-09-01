@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import SyncKanbanButton from '@/components/SyncKanbanButton';
+import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
 import { getSession } from '@/lib/auth';
 
 export const revalidate = 0; // Para garantir que os dados estejam sempre frescos
@@ -331,6 +332,13 @@ export default async function KanbanPage() {
             </div>
           )}
         </div>
+
+        {/* Monitor Horário de Mensagens com Alerta Sonoro de Sirene */}
+        <HourlyGoalMonitor 
+          initialMsgsToday={msgs1d} 
+          sellerName={sellerName} 
+          className="mb-6" 
+        />
         
         {/* Kanban Board Container */}
         <KanbanBoard 
