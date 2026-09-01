@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 
 export default async function Sidebar() {
   const session = await getSession();
+  const isAdmin = session?.role === 'ADMIN';
 
   return (
     <>
@@ -22,51 +23,65 @@ export default async function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 py-8 px-5 space-y-2 overflow-y-auto">
           <div className="mb-4 px-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Menu Principal</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {isAdmin ? 'Painel Administrativo' : 'Menu do Vendedor'}
+            </p>
           </div>
           
-          <Link href="/dashboard/agentes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-primary bg-primary/10 hover:bg-primary/20 transition-colors font-medium border border-primary/20">
-            <Bot size={20} className="text-primary" />
-            <span>Central de Agentes AI</span>
-          </Link>
+          {/* Itens exclusivos do ADMIN no topo */}
+          {isAdmin && (
+            <>
+              <Link href="/dashboard/agentes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-primary bg-primary/10 hover:bg-primary/20 transition-colors font-medium border border-primary/20">
+                <Bot size={20} className="text-primary" />
+                <span>Central de Agentes AI</span>
+              </Link>
 
-          <Link href="/dashboard/perfis" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
-            <Sparkles size={20} className="text-amber-400" />
-            <span>Inteligência de Perfis</span>
-          </Link>
+              <Link href="/dashboard/perfis" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+                <Sparkles size={20} className="text-amber-400" />
+                <span>Inteligência de Perfis</span>
+              </Link>
+            </>
+          )}
 
+          {/* 3 Telas Principais do Vendedor (e também visíveis ao Admin) */}
           <Link href="/clientes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <Users size={20} className="text-muted-foreground" />
             <span>Clientes (Radar)</span>
           </Link>
+
           <Link href="/vendedor/kanban" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <Target size={20} className="text-muted-foreground" />
             <span>Kanban de Vendas</span>
           </Link>
+
           <Link href="/vendedor/desempenho" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <BarChart3 size={20} className="text-violet-400" />
             <span>Meu Desempenho</span>
           </Link>
-          <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
-            <MessageCircle size={20} className="text-muted-foreground" />
-            <span>Mensagens Enviadas</span>
-          </Link>
 
-          <Link href="/dashboard/nao-se-aplica" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
-            <Ban size={20} className="text-rose-400" />
-            <span>Não Se Aplica (Ignorados)</span>
-          </Link>
-
-          {session?.role === 'ADMIN' && (
+          {/* Itens adicionais exclusivos do ADMIN */}
+          {isAdmin && (
             <>
+              <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+                <MessageCircle size={20} className="text-muted-foreground" />
+                <span>Mensagens Enviadas</span>
+              </Link>
+
+              <Link href="/dashboard/nao-se-aplica" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+                <Ban size={20} className="text-rose-400" />
+                <span>Não Se Aplica (Ignorados)</span>
+              </Link>
+
               <Link href="/dashboard/geral" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <LayoutDashboard size={20} className="text-muted-foreground" />
                 <span>Visão Geral</span>
               </Link>
+
               <Link href="/dashboard/conversao" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <BarChart3 size={20} className="text-muted-foreground" />
                 <span>Conversão</span>
               </Link>
+
               <Link href="/relatorios/roi" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
                 <BarChart3 size={20} className="text-muted-foreground" />
                 <span>Relatório ROI</span>
@@ -100,12 +115,13 @@ export default async function Sidebar() {
           <BarChart3 size={20} className="text-violet-400" />
           <span className="text-[10px] font-medium">Desempenho</span>
         </Link>
-        <Link href="/dashboard/mensagens" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
-          <MessageCircle size={20} />
-          <span className="text-[10px] font-medium">Msgs</span>
-        </Link>
-        {session?.role === 'ADMIN' && (
+
+        {isAdmin && (
           <>
+            <Link href="/dashboard/mensagens" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
+              <MessageCircle size={20} />
+              <span className="text-[10px] font-medium">Msgs</span>
+            </Link>
             <Link href="/dashboard/geral" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
               <LayoutDashboard size={20} />
               <span className="text-[10px] font-medium">Geral</span>
@@ -116,6 +132,7 @@ export default async function Sidebar() {
             </Link>
           </>
         )}
+
         <form action="/api/auth/logout" method="POST" className="flex items-center justify-center">
           <button type="submit" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-destructive transition-colors p-2">
             <LogOut size={20} />

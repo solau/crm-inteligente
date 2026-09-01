@@ -15,12 +15,12 @@ export function middleware(request: NextRequest) {
       const decoded = Buffer.from(sessionCookie.value, 'base64').toString('utf-8');
       const session = JSON.parse(decoded);
       
-      // Se for vendedor, bloquear rotas específicas
+      // Se for vendedor, permitir estritamente apenas as 3 telas: Clientes, Kanban e Desempenho
       if (session.role === 'VENDEDOR') {
         const path = request.nextUrl.pathname;
-        // Vendedores só podem acessar /vendedor/kanban, /clientes e /clientes/[id]
         if (
           !path.startsWith('/vendedor/kanban') && 
+          !path.startsWith('/vendedor/desempenho') &&
           !path.startsWith('/clientes') &&
           !path.startsWith('/api/')
         ) {
