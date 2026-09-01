@@ -43,6 +43,10 @@ export default async function Sidebar() {
             <Target size={20} className="text-muted-foreground" />
             <span>Kanban de Vendas</span>
           </Link>
+          <Link href="/vendedor/desempenho" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+            <BarChart3 size={20} className="text-violet-400" />
+            <span>Meu Desempenho</span>
+          </Link>
           <Link href="/dashboard/mensagens" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <MessageCircle size={20} className="text-muted-foreground" />
             <span>Mensagens Enviadas</span>
@@ -91,6 +95,10 @@ export default async function Sidebar() {
         <Link href="/vendedor/kanban" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
           <Target size={20} />
           <span className="text-[10px] font-medium">Kanban</span>
+        </Link>
+        <Link href="/vendedor/desempenho" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
+          <BarChart3 size={20} className="text-violet-400" />
+          <span className="text-[10px] font-medium">Desempenho</span>
         </Link>
         <Link href="/dashboard/mensagens" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
           <MessageCircle size={20} />
