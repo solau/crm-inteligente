@@ -9,7 +9,6 @@ import {
   MessageSquare, 
   Target, 
   BrainCircuit, 
-  Zap, 
   AlertTriangle, 
   Award, 
   Tag, 
@@ -18,9 +17,11 @@ import {
   ArrowDown,
   Clock,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Users,
+  History
 } from 'lucide-react';
-import { CampaignMtdStats } from '@/app/api/ai/meu-desempenho/route';
+import { CampaignMonthStats } from '@/app/api/ai/meu-desempenho/route';
 
 export interface RawSellerInteraction {
   id: string;
@@ -35,20 +36,63 @@ export interface RawSellerInteraction {
   }[] | null;
 }
 
+export interface TeamMonthlySummary {
+  totalMsgs: number;
+  totalSales: number;
+  totalRevenue: number;
+  activeSellersCount: number;
+  avgMsgsPerSeller: number;
+  avgConvRate: number;
+  avgRevenuePerSeller: number;
+}
+
 interface MeuDesempenhoClientProps {
   sellerName: string;
   sellerId: string;
   interactions: RawSellerInteraction[];
+  teamMonthlySummary: Record<string, TeamMonthlySummary>;
 }
 
 export default function MeuDesempenhoClient({
   sellerName,
-  interactions
+  interactions,
+  teamMonthlySummary
 }: MeuDesempenhoClientProps) {
-  const [aiEvaluation, setAiEvaluation] = useState<string | null>(null);
+  // 1. Extrair todos os meses disponíveis
+  const { allMonths, monthLabels } = useMemo(() => {
+    const monthsSet = new Set<string>();
+    
+    // Meses das interações do vendedor
+    interactions.forEach(i => {
+      monthsSet.add(i.created_at.slice(0, 7));
+    });
+
+    // Meses da equipe
+    Object.keys(teamMonthlySummary).forEach(m => monthsSet.add(m));
+
+    // Garante que o mês atual esteja na lista
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    monthsSet.add(currentMonthKey);
+
+    const sortedMonths = Array.from(monthsSet).sort().reverse(); // Mais recente primeiro
+
+    const mLabels: Record<string, string> = {};
+    sortedMonths.forEach(m => {
+      const [year, month] = m.split('-');
+      const d = new Date(Number(year), Number(month) - 1, 1);
+      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      mLabels[m] = label.charAt(0).toUpperCase() + label.slice(1);
+    });
+
+    return { allMonths: sortedMonths, monthLabels: mLabels };
+  }, [interactions, teamMonthlySummary]);
+
+  // Mês Selecionado (padrão: mês mais recente)
+  const [selectedMonth, setSelectedMonth] = useState<string>(allMonths[0] || '');
+  const [aiEvaluations, setAiEvaluations] = useState<Record<string, string>>({});
   const [loadingAI, setLoadingAI] = useState(false);
 
-  // Mapeamento de nomes de campanhas amigáveis
   const campaignLabels: Record<string, string> = {
     'CASHBACK_1D': '⏰ Cashback (1 Dia)',
     'CASHBACK_5D': '⚡ Cashback (5 Dias)',
@@ -65,102 +109,143 @@ export default function MeuDesempenhoClient({
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-  // Cálculo MTD (Month-To-Date) e Comparativo com Mês Anterior até a mesma data
-  const mtdStats = useMemo(() => {
+  // 2. Processamento Completo do Mês Selecionado vs Mês Anterior vs Histórico vs Equipe
+  const monthData = useMemo(() => {
+    if (!selectedMonth) return null;
+
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-11
-    const currentDay = now.getDate(); // 1-31
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const isCurrentMonth = selectedMonth === currentMonthKey;
+    const currentDay = now.getDate();
 
-    // Mês anterior
-    const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
-    const prevYear = prevMonthDate.getFullYear();
-    const prevMonth = prevMonthDate.getMonth();
+    const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+    const daysInSelMonth = new Date(selYear, selMonth, 0).getDate();
+    const daysToEvaluate = isCurrentMonth ? currentDay : daysInSelMonth;
 
-    const currentMonthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-    const prevMonthKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
-
-    const currentMonthName = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    const prevMonthName = prevMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
-    // Meta diária fixa
+    // Meta diária de 60 msgs/dia
     const DAILY_GOAL = 60;
-    const targetMsgs = currentDay * DAILY_GOAL;
+    const targetMsgs = daysToEvaluate * DAILY_GOAL;
 
-    let currentMtdMsgs = 0;
-    let currentMtdSales = 0;
-    let currentMtdRevenue = 0;
+    // Identificar mês imediatamente anterior
+    const prevDate = new Date(selYear, selMonth - 2, 1);
+    const prevMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    const prevMonthName = monthLabels[prevMonthKey] || prevMonthKey;
 
-    let prevMtdMsgs = 0;
-    let prevMtdSales = 0;
-    let prevMtdRevenue = 0;
+    // Dados do Mês Selecionado
+    let selMsgs = 0;
+    let selSales = 0;
+    let selRevenue = 0;
 
-    let prevFullMsgs = 0;
-    let prevFullSales = 0;
-    let prevFullRevenue = 0;
+    // Dados do Mês Anterior (mesmo intervalo de dias para comparação justa)
+    let prevMsgs = 0;
+    let prevSales = 0;
+    let prevRevenue = 0;
 
-    // Estruturas por campanha
-    const currentCampaignsMap: Record<string, { msgs: number; sales: number; revenue: number }> = {};
-    const prevMtdCampaignsMap: Record<string, { msgs: number; sales: number; revenue: number }> = {};
-    const allCampaignKeys = new Set<string>();
+    // Histórico geral do vendedor (todos os meses gravados)
+    const sellerHistoryByMonth: Record<string, { msgs: number; sales: number; revenue: number }> = {};
+    const campaignMapSelected: Record<string, { msgs: number; sales: number; revenue: number }> = {};
+    const campaignMapPrev: Record<string, { msgs: number; sales: number; revenue: number }> = {};
+    const allCampaignKeys = new Set<string>([
+      'CASHBACK_1D',
+      'CASHBACK_5D',
+      'CASHBACK_10D',
+      'CASHBACK_15D',
+      'AUSENTE_45D',
+      'OFERTA_90D',
+      'POS_VENDA',
+      'CORRIDA_ALPHAVILLE',
+      'LEADS_BPE25',
+      'OUTROS'
+    ]);
 
     interactions.forEach(i => {
+      const iMonth = i.created_at.slice(0, 7);
       const iDate = new Date(i.created_at);
-      const iYear = iDate.getFullYear();
-      const iMonth = iDate.getMonth();
       const iDay = iDate.getDate();
-
       const campaign = i.campaign_type || 'OUTROS';
       allCampaignKeys.add(campaign);
 
       const hasSale = i.sales_attribution && i.sales_attribution.length > 0;
-      const rev = hasSale ? i.sales_attribution!.reduce((acc, cur) => acc + Number(cur.revenue), 0) : 0;
+      const rev = hasSale ? i.sales_attribution!.reduce((acc, cur) => acc + Number(cur.revenue || 0), 0) : 0;
 
-      // 1. Mês Atual (MTD: até o dia atual)
-      if (iYear === currentYear && iMonth === currentMonth) {
-        if (iDay <= currentDay) {
-          currentMtdMsgs++;
-          if (hasSale) currentMtdSales++;
-          currentMtdRevenue += rev;
+      // Agregação histórica do vendedor
+      if (!sellerHistoryByMonth[iMonth]) {
+        sellerHistoryByMonth[iMonth] = { msgs: 0, sales: 0, revenue: 0 };
+      }
+      sellerHistoryByMonth[iMonth].msgs++;
+      if (hasSale) sellerHistoryByMonth[iMonth].sales++;
+      sellerHistoryByMonth[iMonth].revenue += rev;
 
-          if (!currentCampaignsMap[campaign]) {
-            currentCampaignsMap[campaign] = { msgs: 0, sales: 0, revenue: 0 };
-          }
-          currentCampaignsMap[campaign].msgs++;
-          if (hasSale) currentCampaignsMap[campaign].sales++;
-          currentCampaignsMap[campaign].revenue += rev;
+      // 1. Mês Selecionado
+      if (iMonth === selectedMonth) {
+        if (!isCurrentMonth || iDay <= currentDay) {
+          selMsgs++;
+          if (hasSale) selSales++;
+          selRevenue += rev;
+
+          if (!campaignMapSelected[campaign]) campaignMapSelected[campaign] = { msgs: 0, sales: 0, revenue: 0 };
+          campaignMapSelected[campaign].msgs++;
+          if (hasSale) campaignMapSelected[campaign].sales++;
+          campaignMapSelected[campaign].revenue += rev;
         }
       }
 
-      // 2. Mês Anterior
-      if (iYear === prevYear && iMonth === prevMonth) {
-        prevFullMsgs++;
-        if (hasSale) prevFullSales++;
-        prevFullRevenue += rev;
+      // 2. Mês Anterior (mesmo corte de dias)
+      if (iMonth === prevMonthKey) {
+        if (!isCurrentMonth || iDay <= currentDay) {
+          prevMsgs++;
+          if (hasSale) prevSales++;
+          prevRevenue += rev;
 
-        // MTD do mês anterior (até o mesmo dia)
-        if (iDay <= currentDay) {
-          prevMtdMsgs++;
-          if (hasSale) prevMtdSales++;
-          prevMtdRevenue += rev;
-
-          if (!prevMtdCampaignsMap[campaign]) {
-            prevMtdCampaignsMap[campaign] = { msgs: 0, sales: 0, revenue: 0 };
-          }
-          prevMtdCampaignsMap[campaign].msgs++;
-          if (hasSale) prevMtdCampaignsMap[campaign].sales++;
-          prevMtdCampaignsMap[campaign].revenue += rev;
+          if (!campaignMapPrev[campaign]) campaignMapPrev[campaign] = { msgs: 0, sales: 0, revenue: 0 };
+          campaignMapPrev[campaign].msgs++;
+          if (hasSale) campaignMapPrev[campaign].sales++;
+          campaignMapPrev[campaign].revenue += rev;
         }
       }
     });
 
-    const currentMtdConvRate = currentMtdMsgs > 0 ? (currentMtdSales / currentMtdMsgs) * 100 : 0;
-    const prevMtdConvRate = prevMtdMsgs > 0 ? (prevMtdSales / prevMtdMsgs) * 100 : 0;
+    const selConvRate = selMsgs > 0 ? (selSales / selMsgs) * 100 : 0;
+    const prevConvRate = prevMsgs > 0 ? (prevSales / prevMsgs) * 100 : 0;
 
-    // Montar detalhamento de todas as campanhas
-    const campaignsList: CampaignMtdStats[] = Array.from(allCampaignKeys).map(cKey => {
-      const cur = currentCampaignsMap[cKey] || { msgs: 0, sales: 0, revenue: 0 };
-      const prv = prevMtdCampaignsMap[cKey] || { msgs: 0, sales: 0, revenue: 0 };
+    // Cálculo da média histórica do próprio vendedor (excluindo o mês atual para benchmark limpo)
+    const otherMonths = Object.keys(sellerHistoryByMonth).filter(m => m !== selectedMonth);
+    let sellerHistAvgMsgs = 0;
+    let sellerHistAvgConv = 0;
+    let sellerHistAvgRevenue = 0;
+
+    if (otherMonths.length > 0) {
+      let sumM = 0, sumS = 0, sumR = 0;
+      otherMonths.forEach(m => {
+        const d = sellerHistoryByMonth[m];
+        sumM += d.msgs;
+        sumS += d.sales;
+        sumR += d.revenue;
+      });
+      sellerHistAvgMsgs = sumM / otherMonths.length;
+      sellerHistAvgConv = sumM > 0 ? (sumS / sumM) * 100 : 0;
+      sellerHistAvgRevenue = sumR / otherMonths.length;
+    } else {
+      sellerHistAvgMsgs = selMsgs;
+      sellerHistAvgConv = selConvRate;
+      sellerHistAvgRevenue = selRevenue;
+    }
+
+    // Benchmark da Equipe para o mês selecionado
+    const teamStats = teamMonthlySummary[selectedMonth] || {
+      totalMsgs: 0,
+      totalSales: 0,
+      totalRevenue: 0,
+      activeSellersCount: 1,
+      avgMsgsPerSeller: 0,
+      avgConvRate: 0,
+      avgRevenuePerSeller: 0
+    };
+
+    // Montar lista de campanhas do mês
+    const campaignsList: CampaignMonthStats[] = Array.from(allCampaignKeys).map(cKey => {
+      const cur = campaignMapSelected[cKey] || { msgs: 0, sales: 0, revenue: 0 };
+      const prv = campaignMapPrev[cKey] || { msgs: 0, sales: 0, revenue: 0 };
 
       const cConv = cur.msgs > 0 ? (cur.sales / cur.msgs) * 100 : 0;
       const pConv = prv.msgs > 0 ? (prv.sales / prv.msgs) * 100 : 0;
@@ -168,77 +253,103 @@ export default function MeuDesempenhoClient({
       return {
         campaign: cKey,
         label: campaignLabels[cKey] || cKey,
-        currentMsgs: cur.msgs,
-        currentSales: cur.sales,
-        currentConvRate: cConv,
-        currentRevenue: cur.revenue,
-        prevMtdMsgs: prv.msgs,
-        prevMtdSales: prv.sales,
-        prevMtdConvRate: pConv,
-        prevMtdRevenue: prv.revenue
+        monthMsgs: cur.msgs,
+        monthSales: cur.sales,
+        monthConvRate: cConv,
+        monthRevenue: cur.revenue,
+        prevMonthMsgs: prv.msgs,
+        prevMonthSales: prv.sales,
+        prevMonthConvRate: pConv,
+        prevMonthRevenue: prv.revenue
       };
-    }).sort((a, b) => (b.currentRevenue + b.currentMsgs * 10) - (a.currentRevenue + a.currentMsgs * 10));
+    }).sort((a, b) => (b.monthRevenue + b.monthMsgs * 10) - (a.monthRevenue + a.monthMsgs * 10));
 
-    // Variações MoM MTD
-    const deltaMsgs = currentMtdMsgs - prevMtdMsgs;
-    const deltaMsgsPercent = prevMtdMsgs > 0 ? ((deltaMsgs / prevMtdMsgs) * 100) : (currentMtdMsgs > 0 ? 100 : 0);
+    // Variações vs Mês Anterior
+    const deltaMsgs = selMsgs - prevMsgs;
+    const deltaMsgsPercent = prevMsgs > 0 ? ((deltaMsgs / prevMsgs) * 100) : (selMsgs > 0 ? 100 : 0);
+    const deltaSales = selSales - prevSales;
+    const deltaRevenue = selRevenue - prevRevenue;
+    const deltaRevenuePercent = prevRevenue > 0 ? ((deltaRevenue / prevRevenue) * 100) : (selRevenue > 0 ? 100 : 0);
+    const deltaConv = selConvRate - prevConvRate;
 
-    const deltaSales = currentMtdSales - prevMtdSales;
-    const deltaRevenue = currentMtdRevenue - prevMtdRevenue;
-    const deltaRevenuePercent = prevMtdRevenue > 0 ? ((deltaRevenue / prevMtdRevenue) * 100) : (currentMtdRevenue > 0 ? 100 : 0);
+    // Variações vs Histórico Próprio
+    const deltaVsHistMsgs = selMsgs - sellerHistAvgMsgs;
+    const deltaVsHistConv = selConvRate - sellerHistAvgConv;
+    const deltaVsHistRevenue = selRevenue - sellerHistAvgRevenue;
 
-    const deltaConv = currentMtdConvRate - prevMtdConvRate;
+    // Variações vs Equipe
+    const deltaVsTeamMsgs = selMsgs - teamStats.avgMsgsPerSeller;
+    const deltaVsTeamConv = selConvRate - teamStats.avgConvRate;
+    const deltaVsTeamRevenue = selRevenue - teamStats.avgRevenuePerSeller;
 
-    const diffTarget = currentMtdMsgs - targetMsgs;
+    const diffTarget = selMsgs - targetMsgs;
     const isAboveTarget = diffTarget >= 0;
 
     return {
-      currentDay,
-      currentMonthName: currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1),
-      previousMonthName: prevMonthName.charAt(0).toUpperCase() + prevMonthName.slice(1),
+      monthKey: selectedMonth,
+      monthName: monthLabels[selectedMonth],
+      prevMonthName,
+      isCurrentMonth,
+      currentDay: daysToEvaluate,
       targetMsgs,
-      currentMtdMsgs,
-      currentMtdSales,
-      currentMtdConvRate,
-      currentMtdRevenue,
-      prevMtdMsgs,
-      prevMtdSales,
-      prevMtdConvRate,
-      prevMtdRevenue,
-      prevFullMsgs,
-      prevFullSales,
-      prevFullRevenue,
+      selMsgs,
+      selSales,
+      selConvRate,
+      selRevenue,
+      prevMsgs,
+      prevSales,
+      prevConvRate,
+      prevRevenue,
       deltaMsgs,
       deltaMsgsPercent,
       deltaSales,
       deltaRevenue,
       deltaRevenuePercent,
       deltaConv,
+      sellerHistAvgMsgs,
+      sellerHistAvgConv,
+      sellerHistAvgRevenue,
+      deltaVsHistMsgs,
+      deltaVsHistConv,
+      deltaVsHistRevenue,
+      teamStats,
+      deltaVsTeamMsgs,
+      deltaVsTeamConv,
+      deltaVsTeamRevenue,
       diffTarget,
       isAboveTarget,
       campaignsList
     };
-  }, [interactions]);
+  }, [selectedMonth, interactions, teamMonthlySummary, monthLabels]);
 
   // Disparo da Avaliação com IA
   const handleRunAiEvaluation = async () => {
+    if (!monthData) return;
+
     setLoadingAI(true);
     try {
       const payload = {
         sellerName,
-        currentDay: mtdStats.currentDay,
-        currentMonthName: mtdStats.currentMonthName,
-        previousMonthName: mtdStats.previousMonthName,
-        targetMsgs: mtdStats.targetMsgs,
-        currentMtdMsgs: mtdStats.currentMtdMsgs,
-        currentMtdSales: mtdStats.currentMtdSales,
-        currentMtdConvRate: mtdStats.currentMtdConvRate,
-        currentMtdRevenue: mtdStats.currentMtdRevenue,
-        prevMtdMsgs: mtdStats.prevMtdMsgs,
-        prevMtdSales: mtdStats.prevMtdSales,
-        prevMtdConvRate: mtdStats.prevMtdConvRate,
-        prevMtdRevenue: mtdStats.prevMtdRevenue,
-        campaigns: mtdStats.campaignsList
+        monthEvaluated: monthData.monthName,
+        isCurrentMonth: monthData.isCurrentMonth,
+        currentDay: monthData.currentDay,
+        previousMonthName: monthData.prevMonthName,
+        targetMsgs: monthData.targetMsgs,
+        monthMsgs: monthData.selMsgs,
+        monthSales: monthData.selSales,
+        monthConvRate: monthData.selConvRate,
+        monthRevenue: monthData.selRevenue,
+        prevMonthMsgs: monthData.prevMsgs,
+        prevMonthSales: monthData.prevSales,
+        prevMonthConvRate: monthData.prevConvRate,
+        prevMonthRevenue: monthData.prevRevenue,
+        sellerHistoricalAvgMsgs: monthData.sellerHistAvgMsgs,
+        sellerHistoricalAvgConv: monthData.sellerHistAvgConv,
+        sellerHistoricalAvgRevenue: monthData.sellerHistAvgRevenue,
+        teamMonthAvgMsgs: monthData.teamStats.avgMsgsPerSeller,
+        teamMonthAvgConv: monthData.teamStats.avgConvRate,
+        teamMonthAvgRevenue: monthData.teamStats.avgRevenuePerSeller,
+        campaigns: monthData.campaignsList
       };
 
       const res = await fetch('/api/ai/meu-desempenho', {
@@ -249,22 +360,32 @@ export default function MeuDesempenhoClient({
 
       const data = await res.json();
       if (data.success) {
-        setAiEvaluation(data.analysis);
+        setAiEvaluations(prev => ({ ...prev, [selectedMonth]: data.analysis }));
       } else {
-        setAiEvaluation('⚠️ Ocorreu um erro ao gerar a avaliação com IA. Tente novamente em instantes.');
+        setAiEvaluations(prev => ({ ...prev, [selectedMonth]: '⚠️ Ocorreu um erro ao gerar a avaliação com IA.' }));
       }
     } catch (err) {
       console.error('Erro ao avaliar desempenho:', err);
-      setAiEvaluation('⚠️ Falha de comunicação com o servidor de IA.');
+      setAiEvaluations(prev => ({ ...prev, [selectedMonth]: '⚠️ Falha de comunicação com a IA.' }));
     } finally {
       setLoadingAI(false);
     }
   };
 
+  if (!monthData) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        Nenhum dado registrado para avaliação.
+      </div>
+    );
+  }
+
+  const currentAiText = aiEvaluations[selectedMonth];
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-16">
       
-      {/* 1. Header do Vendedor */}
+      {/* 1. Header do Vendedor com Seletor de Mês */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-2">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-violet-500/20">
@@ -276,40 +397,63 @@ export default function MeuDesempenhoClient({
                 Painel do Vendedor
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Dia {mtdStats.currentDay} de {mtdStats.currentMonthName}
+                <Clock className="w-3 h-3" /> {monthData.isCurrentMonth ? `Até Dia ${monthData.currentDay}` : 'Mês Fechado'}
               </span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground mt-1">
               Meu Desempenho & Campanhas
             </h1>
             <p className="text-muted-foreground text-xs md:text-sm">
-              Acompanhamento detalhado em tempo real comparando sempre com o mesmo período do mês anterior.
+              Avaliação do seu resultado em <span className="text-white font-bold">{monthData.monthName}</span> comparado com seu histórico e a média da equipe.
             </p>
           </div>
         </div>
 
-        {/* Botão de Avaliação da IA */}
-        <button
-          onClick={handleRunAiEvaluation}
-          disabled={loadingAI}
-          className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-sm text-white transition-all shadow-xl active:scale-95 border ${
-            loadingAI
-              ? 'bg-violet-600/50 border-violet-500/30 cursor-not-allowed'
-              : 'bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 border-violet-400/40 shadow-violet-500/25'
-          }`}
-        >
-          {loadingAI ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin text-violet-200" />
-              <span>Gerando Avaliação com IA...</span>
-            </>
-          ) : (
-            <>
-              <BrainCircuit className="w-5 h-5 text-violet-200" />
-              <span>Avaliar Meu Desempenho com IA</span>
-            </>
-          )}
-        </button>
+        {/* Controles de Mês e Botão de Avaliação */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Seletor de Mês */}
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 px-3.5 py-2.5 rounded-2xl">
+            <Calendar className="w-4 h-4 text-amber-400" />
+            <div>
+              <p className="text-[9px] text-zinc-400 font-bold uppercase">Mês de Avaliação</p>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-zinc-900 text-white font-black text-sm focus:outline-none cursor-pointer border-none"
+                style={{ colorScheme: 'dark', backgroundColor: '#18181b', color: '#ffffff' }}
+              >
+                {allMonths.map(m => (
+                  <option key={m} value={m} style={{ backgroundColor: '#18181b', color: '#ffffff' }}>
+                    📅 {monthLabels[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Botão de Avaliação da IA */}
+          <button
+            onClick={handleRunAiEvaluation}
+            disabled={loadingAI}
+            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm text-white transition-all shadow-xl active:scale-95 border ${
+              loadingAI
+                ? 'bg-violet-600/50 border-violet-500/30 cursor-not-allowed'
+                : 'bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 border-violet-400/40 shadow-violet-500/25'
+            }`}
+          >
+            {loadingAI ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-violet-200" />
+                <span>Avaliando {monthData.monthName.split(' ')[0]}...</span>
+              </>
+            ) : (
+              <>
+                <BrainCircuit className="w-5 h-5 text-violet-200" />
+                <span>Avaliar Meu Desempenho com IA</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 2. Banner da Meta MÍNIMA Obrigatória (60 msgs/dia) */}
@@ -329,9 +473,10 @@ export default function MeuDesempenhoClient({
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
-                Até o dia de hoje (dia {mtdStats.currentDay}), sua meta mínima acumulada é de{' '}
-                <span className="text-white font-bold">{mtdStats.targetMsgs} mensagens</span>. 
-                Meta semanal: <span className="text-white font-semibold">420 msgs</span> · Meta mensal: <span className="text-white font-semibold">1.800 msgs</span>.
+                {monthData.isCurrentMonth
+                  ? `Para o mês atual (até o dia ${monthData.currentDay}), sua meta acumulada é de ${monthData.targetMsgs} mensagens.`
+                  : `Para o mês fechado de ${monthData.monthName} (${monthData.currentDay} dias), a meta mínima foi de ${monthData.targetMsgs} mensagens.`}
+                {' '}Meta semanal: <span className="text-white font-semibold">420 msgs</span> · Mensal: <span className="text-white font-semibold">1.800 msgs</span>.
               </p>
             </div>
           </div>
@@ -339,51 +484,51 @@ export default function MeuDesempenhoClient({
           {/* Status e Indicador vs Meta */}
           <div className="flex items-center gap-4 bg-zinc-950/80 px-4 py-3 rounded-2xl border border-zinc-800/80">
             <div className="text-right">
-              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Ritmo Atual</p>
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Volume Enviado</p>
               <div className="flex items-center gap-1.5 justify-end">
-                <span className={`text-xl font-black ${mtdStats.isAboveTarget ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {mtdStats.currentMtdMsgs}
+                <span className={`text-xl font-black ${monthData.isAboveTarget ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {monthData.selMsgs}
                 </span>
-                <span className="text-xs text-zinc-500 font-semibold">/ {mtdStats.targetMsgs}</span>
+                <span className="text-xs text-zinc-500 font-semibold">/ {monthData.targetMsgs}</span>
               </div>
             </div>
             <div className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 ${
-              mtdStats.isAboveTarget ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              monthData.isAboveTarget ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
             }`}>
-              {mtdStats.isAboveTarget ? (
+              {monthData.isAboveTarget ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>+{mtdStats.diffTarget} msgs</span>
+                  <span>+{monthData.diffTarget} msgs</span>
                 </>
               ) : (
                 <>
                   <ArrowDown className="w-3.5 h-3.5" />
-                  <span>{mtdStats.diffTarget} msgs</span>
+                  <span>{monthData.diffTarget} msgs</span>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        {/* Barra de Progresso da Meta Diária */}
+        {/* Barra de Progresso */}
         <div className="mt-4">
           <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400 mb-1.5">
-            <span>Progresso da Meta MTD</span>
-            <span>{Math.min(200, ((mtdStats.currentMtdMsgs / (mtdStats.targetMsgs || 1)) * 100)).toFixed(0)}%</span>
+            <span>Progresso da Meta de {monthData.monthName}</span>
+            <span>{Math.min(200, ((monthData.selMsgs / (monthData.targetMsgs || 1)) * 100)).toFixed(0)}%</span>
           </div>
           <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
-                mtdStats.isAboveTarget ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-rose-500 to-amber-500'
+                monthData.isAboveTarget ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-rose-500 to-amber-500'
               }`}
-              style={{ width: `${Math.min(100, ((mtdStats.currentMtdMsgs / (mtdStats.targetMsgs || 1)) * 100))}%` }}
+              style={{ width: `${Math.min(100, ((monthData.selMsgs / (monthData.targetMsgs || 1)) * 100))}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* 3. Bloco de Avaliação da IA (Dossiê) */}
-      {aiEvaluation && (
+      {/* 3. Dossiê de Avaliação da IA para o Mês Selecionado */}
+      {currentAiText && (
         <div className="p-6 rounded-3xl bg-zinc-900 border border-violet-500/30 shadow-2xl shadow-violet-500/10 space-y-4 animate-in fade-in zoom-in-95 duration-500">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
             <div className="flex items-center gap-3">
@@ -392,10 +537,10 @@ export default function MeuDesempenhoClient({
               </div>
               <div>
                 <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  Avaliação da IA de Desempenho
+                  Avaliação da IA: {monthData.monthName}
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  Análise gerada pelo Gemini considerando o período de 1 a {mtdStats.currentDay} de {mtdStats.currentMonthName} vs {mtdStats.previousMonthName}.
+                  Comparação completa com seu histórico pessoal e com a média da equipe.
                 </p>
               </div>
             </div>
@@ -405,21 +550,21 @@ export default function MeuDesempenhoClient({
           </div>
 
           <div className="prose prose-invert max-w-none text-zinc-200 text-sm leading-relaxed whitespace-pre-line">
-            {aiEvaluation}
+            {currentAiText}
           </div>
         </div>
       )}
 
-      {/* 4. Grid de KPIs Comparativos MTD (Mês Atual vs Mês Anterior até o dia X) */}
+      {/* 4. Grid de KPIs: Mês Selecionado vs Mês Anterior */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Card 1: Mensagens Enviadas */}
+        {/* Card 1: Mensagens */}
         <div className="bg-card border border-border p-6 rounded-3xl shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mensagens MTD</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mensagens Enviadas</p>
               <h3 className="text-3xl font-black text-foreground mt-2">
-                {mtdStats.currentMtdMsgs} <span className="text-xs font-normal text-muted-foreground">msgs</span>
+                {monthData.selMsgs} <span className="text-xs font-normal text-muted-foreground">msgs</span>
               </h3>
             </div>
             <div className="p-3 bg-sky-500/15 rounded-2xl text-sky-400">
@@ -427,28 +572,28 @@ export default function MeuDesempenhoClient({
             </div>
           </div>
           <div className="mt-4 flex items-center gap-1.5 text-xs font-bold">
-            {mtdStats.deltaMsgsPercent >= 0 ? (
+            {monthData.deltaMsgsPercent >= 0 ? (
               <span className="text-emerald-400 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{mtdStats.deltaMsgsPercent.toFixed(1)}%
+                <TrendingUp className="w-3.5 h-3.5" /> +{monthData.deltaMsgsPercent.toFixed(1)}%
               </span>
             ) : (
               <span className="text-rose-400 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {mtdStats.deltaMsgsPercent.toFixed(1)}%
+                <TrendingDown className="w-3.5 h-3.5" /> {monthData.deltaMsgsPercent.toFixed(1)}%
               </span>
             )}
             <span className="text-muted-foreground font-normal">
-              vs {mtdStats.previousMonthName.split(' ')[0]} até dia {mtdStats.currentDay} ({mtdStats.prevMtdMsgs} msgs)
+              vs {monthData.prevMonthName.split(' ')[0]} ({monthData.prevMsgs} msgs)
             </span>
           </div>
         </div>
 
-        {/* Card 2: Vendas Convertidas */}
+        {/* Card 2: Vendas */}
         <div className="bg-card border border-border p-6 rounded-3xl shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vendas Convertidas</p>
               <h3 className="text-3xl font-black text-foreground mt-2">
-                {mtdStats.currentMtdSales} <span className="text-xs font-normal text-muted-foreground">pedidos</span>
+                {monthData.selSales} <span className="text-xs font-normal text-muted-foreground">pedidos</span>
               </h3>
             </div>
             <div className="p-3 bg-indigo-500/15 rounded-2xl text-indigo-400">
@@ -456,17 +601,17 @@ export default function MeuDesempenhoClient({
             </div>
           </div>
           <div className="mt-4 flex items-center gap-1.5 text-xs font-bold">
-            {mtdStats.deltaSales >= 0 ? (
+            {monthData.deltaSales >= 0 ? (
               <span className="text-emerald-400 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{mtdStats.deltaSales} vendas
+                <TrendingUp className="w-3.5 h-3.5" /> +{monthData.deltaSales} vendas
               </span>
             ) : (
               <span className="text-rose-400 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {mtdStats.deltaSales} vendas
+                <TrendingDown className="w-3.5 h-3.5" /> {monthData.deltaSales} vendas
               </span>
             )}
             <span className="text-muted-foreground font-normal">
-              vs {mtdStats.previousMonthName.split(' ')[0]} até dia {mtdStats.currentDay} ({mtdStats.prevMtdSales} vnd)
+              vs {monthData.prevMonthName.split(' ')[0]} ({monthData.prevSales} vnd)
             </span>
           </div>
         </div>
@@ -477,7 +622,7 @@ export default function MeuDesempenhoClient({
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Taxa de Conversão</p>
               <h3 className="text-3xl font-black text-amber-400 mt-2">
-                {mtdStats.currentMtdConvRate.toFixed(1)}%
+                {monthData.selConvRate.toFixed(1)}%
               </h3>
             </div>
             <div className="p-3 bg-amber-500/15 rounded-2xl text-amber-400">
@@ -485,28 +630,28 @@ export default function MeuDesempenhoClient({
             </div>
           </div>
           <div className="mt-4 flex items-center gap-1.5 text-xs font-bold">
-            {mtdStats.deltaConv >= 0 ? (
+            {monthData.deltaConv >= 0 ? (
               <span className="text-emerald-400 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{mtdStats.deltaConv.toFixed(1)} p.p.
+                <TrendingUp className="w-3.5 h-3.5" /> +{monthData.deltaConv.toFixed(1)} p.p.
               </span>
             ) : (
               <span className="text-rose-400 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {mtdStats.deltaConv.toFixed(1)} p.p.
+                <TrendingDown className="w-3.5 h-3.5" /> {monthData.deltaConv.toFixed(1)} p.p.
               </span>
             )}
             <span className="text-muted-foreground font-normal">
-              vs {mtdStats.previousMonthName.split(' ')[0]} ({mtdStats.prevMtdConvRate.toFixed(1)}%)
+              vs {monthData.prevMonthName.split(' ')[0]} ({monthData.prevConvRate.toFixed(1)}%)
             </span>
           </div>
         </div>
 
-        {/* Card 4: Receita Gerada */}
+        {/* Card 4: Receita */}
         <div className="bg-card border border-border p-6 rounded-3xl shadow-sm bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Receita Gerada MTD</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Receita no Mês</p>
               <h3 className="text-2xl md:text-3xl font-black text-emerald-400 mt-2">
-                {formatMoney(mtdStats.currentMtdRevenue)}
+                {formatMoney(monthData.selRevenue)}
               </h3>
             </div>
             <div className="p-3 bg-emerald-500/15 rounded-2xl text-emerald-400">
@@ -514,68 +659,149 @@ export default function MeuDesempenhoClient({
             </div>
           </div>
           <div className="mt-4 flex items-center gap-1.5 text-xs font-bold">
-            {mtdStats.deltaRevenue >= 0 ? (
+            {monthData.deltaRevenue >= 0 ? (
               <span className="text-emerald-400 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{mtdStats.deltaRevenuePercent.toFixed(1)}%
+                <TrendingUp className="w-3.5 h-3.5" /> +{monthData.deltaRevenuePercent.toFixed(1)}%
               </span>
             ) : (
               <span className="text-rose-400 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {mtdStats.deltaRevenuePercent.toFixed(1)}%
+                <TrendingDown className="w-3.5 h-3.5" /> {monthData.deltaRevenuePercent.toFixed(1)}%
               </span>
             )}
             <span className="text-muted-foreground font-normal">
-              vs {mtdStats.previousMonthName.split(' ')[0]} ({formatMoney(mtdStats.prevMtdRevenue)})
+              vs {monthData.prevMonthName.split(' ')[0]} ({formatMoney(monthData.prevRevenue)})
             </span>
           </div>
         </div>
       </div>
 
-      {/* 5. Tabela Detalhada de TODAS AS CAMPANHAS */}
+      {/* 5. Painel Duplo de Benchmark: Histórico Pessoal vs Média da Equipe */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Bloco 1: Comparativo com Histórico do Próprio Atendente */}
+        <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+            <div className="p-2 bg-indigo-500/15 rounded-xl text-indigo-400">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Comparativo vs Seu Próprio Histórico</h3>
+              <p className="text-xs text-zinc-400">Seu resultado em {monthData.monthName} contra sua média histórica pessoal.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Mensagens</p>
+              <p className="text-base font-black text-white mt-1">{monthData.selMsgs} <span className="text-xs text-zinc-500">/ {monthData.sellerHistAvgMsgs.toFixed(0)} méd.</span></p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsHistMsgs >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsHistMsgs >= 0 ? '+' : ''}{monthData.deltaVsHistMsgs.toFixed(0)} msgs
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Conversão</p>
+              <p className="text-base font-black text-amber-400 mt-1">{monthData.selConvRate.toFixed(1)}% <span className="text-xs text-zinc-500">/ {monthData.sellerHistAvgConv.toFixed(1)}%</span></p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsHistConv >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsHistConv >= 0 ? '+' : ''}{monthData.deltaVsHistConv.toFixed(1)} p.p.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Receita</p>
+              <p className="text-base font-black text-emerald-400 mt-1">{formatMoney(monthData.selRevenue)}</p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsHistRevenue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsHistRevenue >= 0 ? '+' : ''}{formatMoney(monthData.deltaVsHistRevenue)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Bloco 2: Comparativo vs Média de Toda a Equipe */}
+        <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+            <div className="p-2 bg-emerald-500/15 rounded-xl text-emerald-400">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Comparativo vs Média da Equipe ({monthData.monthName})</h3>
+              <p className="text-xs text-zinc-400">Seu desempenho posicionado frente à média de {monthData.teamStats.activeSellersCount} atendentes.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Msgs vs Equipe</p>
+              <p className="text-base font-black text-white mt-1">{monthData.selMsgs} <span className="text-xs text-zinc-500">/ {monthData.teamStats.avgMsgsPerSeller.toFixed(0)} eq.</span></p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsTeamMsgs >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsTeamMsgs >= 0 ? '+' : ''}{monthData.deltaVsTeamMsgs.toFixed(0)} msgs
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Taxa vs Equipe</p>
+              <p className="text-base font-black text-amber-400 mt-1">{monthData.selConvRate.toFixed(1)}% <span className="text-xs text-zinc-500">/ {monthData.teamStats.avgConvRate.toFixed(1)}%</span></p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsTeamConv >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsTeamConv >= 0 ? '+' : ''}{monthData.deltaVsTeamConv.toFixed(1)} p.p.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase">Faturamento vs Eq.</p>
+              <p className="text-base font-black text-emerald-400 mt-1">{formatMoney(monthData.selRevenue)}</p>
+              <p className={`text-[10px] font-bold mt-1 ${monthData.deltaVsTeamRevenue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {monthData.deltaVsTeamRevenue >= 0 ? '+' : ''}{formatMoney(monthData.deltaVsTeamRevenue)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 6. Tabela Detalhada de TODAS AS CAMPANHAS */}
       <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
         <div className="p-6 bg-muted/20 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
               <Tag className="w-5 h-5 text-indigo-400" />
-              Desempenho por Campanha (1 a {mtdStats.currentDay} de {mtdStats.currentMonthName})
+              Desempenho por Campanha em {monthData.monthName}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Comparativo exato com o mesmo intervalo de dias no mês de {mtdStats.previousMonthName}.
+              Comparativo exato de cada gatilho frente a {monthData.prevMonthName}.
             </p>
           </div>
 
           <span className="text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
-            {mtdStats.campaignsList.length} Campanhas Mapeadas
+            {monthData.campaignsList.length} Campanhas
           </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              {/* Linha 1 de Cabeçalho */}
               <tr className="border-b border-border bg-muted/40 text-muted-foreground text-xs uppercase tracking-wider">
                 <th className="py-4 px-6 text-left font-bold whitespace-nowrap">Campanha</th>
                 <th colSpan={4} className="py-3 px-4 text-center font-bold border-l border-border bg-muted/20 text-foreground text-sm">
-                  {mtdStats.currentMonthName} (até dia {mtdStats.currentDay})
+                  {monthData.monthName}
                 </th>
                 <th colSpan={4} className="py-3 px-4 text-center font-bold border-l border-border bg-muted/10 text-muted-foreground text-sm">
-                  {mtdStats.previousMonthName} (até dia {mtdStats.currentDay})
+                  {monthData.prevMonthName}
                 </th>
                 <th colSpan={2} className="py-3 px-4 text-center font-bold border-l border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-sm">
-                  Evolução MoM
+                  Evolução
                 </th>
               </tr>
 
-              {/* Linha 2 de Cabeçalho */}
               <tr className="border-b border-border bg-muted/20 text-muted-foreground text-[11px] font-semibold">
                 <th className="py-2.5 px-6 text-left">Nome</th>
                 
-                {/* Mês Atual */}
+                {/* Mês Selecionado */}
                 <th className="py-2.5 px-3 text-center border-l border-border">Msgs</th>
                 <th className="py-2.5 px-3 text-center">Vendas</th>
                 <th className="py-2.5 px-3 text-center">Taxa</th>
                 <th className="py-2.5 px-4 text-right">Receita</th>
 
-                {/* Mês Anterior MTD */}
+                {/* Mês Anterior */}
                 <th className="py-2.5 px-3 text-center border-l border-border">Msgs</th>
                 <th className="py-2.5 px-3 text-center">Vendas</th>
                 <th className="py-2.5 px-3 text-center">Taxa</th>
@@ -588,13 +814,12 @@ export default function MeuDesempenhoClient({
             </thead>
 
             <tbody className="divide-y divide-border">
-              {mtdStats.campaignsList.map(c => {
-                const diffSales = c.currentSales - c.prevMtdSales;
-                const diffRev = c.currentRevenue - c.prevMtdRevenue;
+              {monthData.campaignsList.map(c => {
+                const diffSales = c.monthSales - c.prevMonthSales;
+                const diffRev = c.monthRevenue - c.prevMonthRevenue;
 
                 return (
                   <tr key={c.campaign} className="hover:bg-muted/30 transition-colors">
-                    {/* Nome */}
                     <td className="py-4 px-6 text-foreground font-bold whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Tag className="w-3.5 h-3.5 text-indigo-400" />
@@ -602,42 +827,42 @@ export default function MeuDesempenhoClient({
                       </div>
                     </td>
 
-                    {/* Mês Atual */}
+                    {/* Mês Selecionado */}
                     <td className="py-4 px-3 text-center border-l border-border font-bold text-foreground">
-                      {c.currentMsgs}
+                      {c.monthMsgs}
                     </td>
                     <td className="py-4 px-3 text-center font-black">
-                      {c.currentSales > 0 ? (
-                        <span className="text-emerald-400">{c.currentSales}</span>
+                      {c.monthSales > 0 ? (
+                        <span className="text-emerald-400">{c.monthSales}</span>
                       ) : (
                         <span className="text-muted-foreground">0</span>
                       )}
                     </td>
                     <td className="py-4 px-3 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black ${
-                        c.currentConvRate > 0
+                        c.monthConvRate > 0
                           ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
                           : 'text-zinc-500'
                       }`}>
-                        {c.currentConvRate.toFixed(1)}%
+                        {c.monthConvRate.toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 text-right font-black whitespace-nowrap text-emerald-400">
-                      {formatMoney(c.currentRevenue)}
+                      {formatMoney(c.monthRevenue)}
                     </td>
 
-                    {/* Mês Anterior MTD */}
+                    {/* Mês Anterior */}
                     <td className="py-4 px-3 text-center border-l border-border text-muted-foreground">
-                      {c.prevMtdMsgs}
+                      {c.prevMonthMsgs}
                     </td>
                     <td className="py-4 px-3 text-center text-muted-foreground font-semibold">
-                      {c.prevMtdSales}
+                      {c.prevMonthSales}
                     </td>
                     <td className="py-4 px-3 text-center text-muted-foreground text-[11px]">
-                      {c.prevMtdConvRate.toFixed(1)}%
+                      {c.prevMonthConvRate.toFixed(1)}%
                     </td>
                     <td className="py-4 px-4 text-right text-muted-foreground whitespace-nowrap font-medium">
-                      {formatMoney(c.prevMtdRevenue)}
+                      {formatMoney(c.prevMonthRevenue)}
                     </td>
 
                     {/* Evolução */}
@@ -666,45 +891,42 @@ export default function MeuDesempenhoClient({
               {/* Linha de Total */}
               <tr className="bg-muted/40 font-black border-t-2 border-border text-foreground">
                 <td className="py-5 px-6 uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                  <Award className="w-4 h-4" /> Total Consolidado MTD
+                  <Award className="w-4 h-4" /> Total do Mês
                 </td>
 
-                {/* Atual */}
                 <td className="py-5 px-3 text-center border-l border-border text-base">
-                  {mtdStats.currentMtdMsgs}
+                  {monthData.selMsgs}
                 </td>
                 <td className="py-5 px-3 text-center text-emerald-400 text-base">
-                  {mtdStats.currentMtdSales}
+                  {monthData.selSales}
                 </td>
                 <td className="py-5 px-3 text-center">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    {mtdStats.currentMtdConvRate.toFixed(1)}%
+                    {monthData.selConvRate.toFixed(1)}%
                   </span>
                 </td>
                 <td className="py-5 px-4 text-right text-emerald-400 text-base">
-                  {formatMoney(mtdStats.currentMtdRevenue)}
+                  {formatMoney(monthData.selRevenue)}
                 </td>
 
-                {/* Anterior */}
                 <td className="py-5 px-3 text-center border-l border-border text-muted-foreground">
-                  {mtdStats.prevMtdMsgs}
+                  {monthData.prevMsgs}
                 </td>
                 <td className="py-5 px-3 text-center text-muted-foreground">
-                  {mtdStats.prevMtdSales}
+                  {monthData.prevSales}
                 </td>
                 <td className="py-5 px-3 text-center text-muted-foreground text-xs">
-                  {mtdStats.prevMtdConvRate.toFixed(1)}%
+                  {monthData.prevConvRate.toFixed(1)}%
                 </td>
                 <td className="py-5 px-4 text-right text-muted-foreground">
-                  {formatMoney(mtdStats.prevMtdRevenue)}
+                  {formatMoney(monthData.prevRevenue)}
                 </td>
 
-                {/* Evolução */}
                 <td className="py-5 px-3 text-center border-l border-emerald-500/30 text-emerald-400 font-bold">
-                  {mtdStats.deltaSales >= 0 ? `+${mtdStats.deltaSales}` : mtdStats.deltaSales}
+                  {monthData.deltaSales >= 0 ? `+${monthData.deltaSales}` : monthData.deltaSales}
                 </td>
                 <td className="py-5 px-4 text-right text-emerald-400 font-black text-base">
-                  {mtdStats.deltaRevenue >= 0 ? '+' : ''}{formatMoney(mtdStats.deltaRevenue)}
+                  {monthData.deltaRevenue >= 0 ? '+' : ''}{formatMoney(monthData.deltaRevenue)}
                 </td>
               </tr>
             </tbody>

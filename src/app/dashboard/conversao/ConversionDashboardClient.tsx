@@ -107,6 +107,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
 
   // Estados do Modal de Desempenho
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
+  const [evalMonth, setEvalMonth] = useState<string>(allMonths[0] || '');
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, string>>({});
   const [loadingAI, setLoadingAI] = useState<Record<string, boolean>>({});
 
@@ -256,10 +257,32 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
     };
   }, [interactions, allMonths, selectedSeller, selectedCampaign, selectedMonths]);
 
-  // ─── Cálculo de Stats por Funcionário para o Modal de Desempenho ───────────
+  // ─── Cálculo de Stats por Funcionário para o Modal de Desempenho (Baseado em evalMonth) ───
+  const activeEvalMonth = evalMonth || allMonths[allMonths.length - 1] || '';
+
   const employeeStats = useMemo(() => {
-    // Agrupa por vendedor (todos os meses selecionados)
-    const statsMap: Record<string, {
+    if (!activeEvalMonth) {
+      return { employees: [], targetMsgs: 0, totalDays: 0, teamAvgMsgs: 0, teamAvgConv: 0, teamAvgRevenue: 0, isCurrentMonth: false, currentDay: 0, monthName: '', prevMonthName: '' };
+    }
+
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const isCurrentMonth = activeEvalMonth === currentMonthStr;
+    const currentDay = now.getDate();
+
+    const [selYear, selMonth] = activeEvalMonth.split('-').map(Number);
+    const daysInMonth = new Date(selYear, selMonth, 0).getDate();
+    const daysToEvaluate = isCurrentMonth ? currentDay : daysInMonth;
+
+    const DAILY_GOAL = 60;
+    const targetMsgs = daysToEvaluate * DAILY_GOAL;
+
+    const prevDate = new Date(selYear, selMonth - 2, 1);
+    const prevMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    const prevMonthName = monthLabels[prevMonthKey] || prevMonthKey;
+
+    // Agrupamento por vendedor no mês avaliado e em todo o histórico
+    const sellerEvalMap: Record<string, {
       name: string;
       totalMsgs: number;
       totalSales: number;
@@ -267,106 +290,101 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       campaigns: Record<string, { msgs: number; sales: number; revenue: number }>;
     }> = {};
 
+    const sellerPrevMonthMap: Record<string, { msgs: number; sales: number; revenue: number }> = {};
+    const sellerHistoryMap: Record<string, Record<string, { msgs: number; sales: number; revenue: number }>> = {};
+
     interactions.forEach(i => {
       const month = i.created_at.slice(0, 7);
-      if (!selectedMonths.includes(month)) return;
-
+      const iDate = new Date(i.created_at);
+      const iDay = iDate.getDate();
       const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
       const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
       const campaign = i.campaign_type || 'OUTROS';
       const hasSale = i.sales_attribution && i.sales_attribution.length > 0;
-      const rev = hasSale ? i.sales_attribution!.reduce((acc, cur) => acc + Number(cur.revenue), 0) : 0;
+      const rev = hasSale ? i.sales_attribution!.reduce((acc, cur) => acc + Number(cur.revenue || 0), 0) : 0;
 
-      if (!statsMap[seller]) {
-        statsMap[seller] = { name: seller, totalMsgs: 0, totalSales: 0, revenue: 0, campaigns: {} };
-      }
-      statsMap[seller].totalMsgs++;
-      if (hasSale) statsMap[seller].totalSales++;
-      statsMap[seller].revenue += rev;
+      // Histórico mensal por vendedor
+      if (!sellerHistoryMap[seller]) sellerHistoryMap[seller] = {};
+      if (!sellerHistoryMap[seller][month]) sellerHistoryMap[seller][month] = { msgs: 0, sales: 0, revenue: 0 };
+      sellerHistoryMap[seller][month].msgs++;
+      if (hasSale) sellerHistoryMap[seller][month].sales++;
+      sellerHistoryMap[seller][month].revenue += rev;
 
-      if (!statsMap[seller].campaigns[campaign]) {
-        statsMap[seller].campaigns[campaign] = { msgs: 0, sales: 0, revenue: 0 };
+      // 1. Mês Avaliado
+      if (month === activeEvalMonth) {
+        if (!isCurrentMonth || iDay <= currentDay) {
+          if (!sellerEvalMap[seller]) {
+            sellerEvalMap[seller] = { name: seller, totalMsgs: 0, totalSales: 0, revenue: 0, campaigns: {} };
+          }
+          sellerEvalMap[seller].totalMsgs++;
+          if (hasSale) sellerEvalMap[seller].totalSales++;
+          sellerEvalMap[seller].revenue += rev;
+
+          if (!sellerEvalMap[seller].campaigns[campaign]) {
+            sellerEvalMap[seller].campaigns[campaign] = { msgs: 0, sales: 0, revenue: 0 };
+          }
+          sellerEvalMap[seller].campaigns[campaign].msgs++;
+          if (hasSale) sellerEvalMap[seller].campaigns[campaign].sales++;
+          sellerEvalMap[seller].campaigns[campaign].revenue += rev;
+        }
       }
-      statsMap[seller].campaigns[campaign].msgs++;
-      if (hasSale) statsMap[seller].campaigns[campaign].sales++;
-      statsMap[seller].campaigns[campaign].revenue += rev;
+
+      // 2. Mês Anterior (mesmo intervalo de dias)
+      if (month === prevMonthKey) {
+        if (!isCurrentMonth || iDay <= currentDay) {
+          if (!sellerPrevMonthMap[seller]) sellerPrevMonthMap[seller] = { msgs: 0, sales: 0, revenue: 0 };
+          sellerPrevMonthMap[seller].msgs++;
+          if (hasSale) sellerPrevMonthMap[seller].sales++;
+          sellerPrevMonthMap[seller].revenue += rev;
+        }
+      }
     });
 
-    // Calcular dias do período selecionado para meta pro-rated
-    const now = new Date();
-    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const DAILY_GOAL = 60;
+    const validSellers = Object.keys(sellerEvalMap).filter(s => s !== 'Sistema / Sem Vendedor');
+    const allStats = validSellers.map(s => sellerEvalMap[s]);
 
-    let totalDays = 0;
-    selectedMonths.forEach(m => {
-      const [y, mo] = m.split('-').map(Number);
-      if (m === currentMonthStr) {
-        // Pro-rated: só os dias passados no mês atual
-        totalDays += now.getDate();
-      } else {
-        // Mês completo
-        const daysInMonth = new Date(y, mo, 0).getDate();
-        totalDays += daysInMonth;
-      }
-    });
-    const targetMsgs = totalDays * DAILY_GOAL;
-
-    // Calcular stats de equipe para benchmark
-    const allStats = Object.values(statsMap).filter(s => s.name !== 'Sistema / Sem Vendedor');
     const teamAvgMsgs = allStats.length > 0 ? allStats.reduce((a, s) => a + s.totalMsgs, 0) / allStats.length : 0;
     const teamAvgConv = allStats.length > 0
       ? allStats.reduce((a, s) => a + (s.totalMsgs > 0 ? s.totalSales / s.totalMsgs : 0), 0) / allStats.length * 100
       : 0;
     const teamAvgRevenue = allStats.length > 0 ? allStats.reduce((a, s) => a + s.revenue, 0) / allStats.length : 0;
 
-    // Calcular MoM (se >= 2 meses selecionados)
-    const momData: Record<string, { msgsChange: number | null; convChange: number | null }> = {};
-    if (selectedMonths.length >= 2) {
-      const sorted = [...selectedMonths].sort();
-      const prevM = sorted[sorted.length - 2];
-      const currM = sorted[sorted.length - 1];
-
-      interactions.forEach(i => {
-        const month = i.created_at.slice(0, 7);
-        if (month !== prevM && month !== currM) return;
-        const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
-        const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
-        if (!momData[seller]) momData[seller] = { msgsChange: null, convChange: null };
-      });
-
-      // Calcula por mês
-      const perMonth: Record<string, Record<string, { msgs: number; sales: number }>> = {};
-      interactions.forEach(i => {
-        const month = i.created_at.slice(0, 7);
-        if (month !== prevM && month !== currM) return;
-        const profile = Array.isArray(i.user_profiles) ? i.user_profiles[0] : i.user_profiles;
-        const seller = profile?.name || (i.user_id ? `Vendedor ${i.user_id.split('-')[0]}` : 'Sistema / Sem Vendedor');
-        const hasSale = i.sales_attribution && i.sales_attribution.length > 0;
-        if (!perMonth[seller]) perMonth[seller] = {};
-        if (!perMonth[seller][month]) perMonth[seller][month] = { msgs: 0, sales: 0 };
-        perMonth[seller][month].msgs++;
-        if (hasSale) perMonth[seller][month].sales++;
-      });
-
-      Object.keys(perMonth).forEach(seller => {
-        const prev = perMonth[seller][prevM] || { msgs: 0, sales: 0 };
-        const curr = perMonth[seller][currM] || { msgs: 0, sales: 0 };
-        const msgsChange = prev.msgs > 0 ? ((curr.msgs - prev.msgs) / prev.msgs) * 100 : curr.msgs > 0 ? 100 : 0;
-        const prevConv = prev.msgs > 0 ? prev.sales / prev.msgs : 0;
-        const currConv = curr.msgs > 0 ? curr.sales / curr.msgs : 0;
-        const convChange = prevConv > 0 ? ((currConv - prevConv) / prevConv) * 100 : currConv > 0 ? 100 : 0;
-        momData[seller] = { msgsChange, convChange };
-      });
-    }
-
-    // Montar array final ordenado por taxa de conversão DESC
     const result = allStats.map(s => {
       const convRate = s.totalMsgs > 0 ? (s.totalSales / s.totalMsgs) * 100 : 0;
       const campaigns = Object.entries(s.campaigns)
         .map(([name, d]) => ({ name, ...d, convRate: d.msgs > 0 ? (d.sales / d.msgs) * 100 : 0 }))
         .sort((a, b) => b.convRate - a.convRate);
+      
       const bestCampaign = campaigns[0] || { name: 'N/A', convRate: 0 };
       const worstCampaign = campaigns.filter(c => c.msgs > 0)[campaigns.filter(c => c.msgs > 0).length - 1] || { name: 'N/A', convRate: 0 };
+
+      // MoM vs Mês Anterior
+      const prevData = sellerPrevMonthMap[s.name] || { msgs: 0, sales: 0, revenue: 0 };
+      const momMsgsChange = prevData.msgs > 0 ? ((s.totalMsgs - prevData.msgs) / prevData.msgs) * 100 : s.totalMsgs > 0 ? 100 : 0;
+      const prevConv = prevData.msgs > 0 ? (prevData.sales / prevData.msgs) * 100 : 0;
+      const momConvChange = convRate - prevConv;
+      const momRevenueChange = prevData.revenue > 0 ? ((s.revenue - prevData.revenue) / prevData.revenue) * 100 : s.revenue > 0 ? 100 : 0;
+
+      // Histórico do próprio vendedor
+      const sellerMonths = Object.keys(sellerHistoryMap[s.name] || {}).filter(m => m !== activeEvalMonth);
+      let sellerHistAvgMsgs = 0, sellerHistAvgConv = 0, sellerHistAvgRevenue = 0;
+      if (sellerMonths.length > 0) {
+        let hM = 0, hS = 0, hR = 0;
+        sellerMonths.forEach(m => {
+          const d = sellerHistoryMap[s.name][m];
+          hM += d.msgs;
+          hS += d.sales;
+          hR += d.revenue;
+        });
+        sellerHistAvgMsgs = hM / sellerMonths.length;
+        sellerHistAvgConv = hM > 0 ? (hS / hM) * 100 : 0;
+        sellerHistAvgRevenue = hR / sellerMonths.length;
+      } else {
+        sellerHistAvgMsgs = s.totalMsgs;
+        sellerHistAvgConv = convRate;
+        sellerHistAvgRevenue = s.revenue;
+      }
+
       return {
         name: s.name,
         totalMsgs: s.totalMsgs,
@@ -377,32 +395,46 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
         bestCampaign,
         worstCampaign,
         targetMsgs,
-        totalDays,
+        totalDays: daysToEvaluate,
         teamAvgMsgs,
         teamAvgConv,
         teamAvgRevenue,
-        momMsgsChange: momData[s.name]?.msgsChange ?? null,
-        momConvChange: momData[s.name]?.convChange ?? null,
+        momMsgsChange,
+        momConvChange,
+        momRevenueChange,
+        prevData,
+        sellerHistAvgMsgs,
+        sellerHistAvgConv,
+        sellerHistAvgRevenue
       };
     }).sort((a, b) => b.convRate - a.convRate);
 
-    return { employees: result, targetMsgs, totalDays, teamAvgMsgs, teamAvgConv, teamAvgRevenue };
-  }, [interactions, selectedMonths]);
+    return {
+      employees: result,
+      targetMsgs,
+      totalDays: daysToEvaluate,
+      teamAvgMsgs,
+      teamAvgConv,
+      teamAvgRevenue,
+      isCurrentMonth,
+      currentDay: daysToEvaluate,
+      monthName: monthLabels[activeEvalMonth] || activeEvalMonth,
+      prevMonthName
+    };
+  }, [interactions, activeEvalMonth, monthLabels]);
 
-  // Função para chamar análise de IA por funcionário
+  // Função para chamar análise de IA por funcionário no mês selecionado
   const handleAnalyzeEmployee = async (employeeName: string, idx: number) => {
     const emp = employeeStats.employees[idx];
     if (!emp) return;
 
     setLoadingAI(prev => ({ ...prev, [employeeName]: true }));
     try {
-      const periodLabel = selectedMonths.length === 1
-        ? (monthLabels[selectedMonths[0]] || selectedMonths[0])
-        : selectedMonths.map(m => monthLabels[m] || m).join(' + ');
-
       const payload = {
         name: emp.name,
-        period: periodLabel,
+        monthEvaluated: employeeStats.monthName,
+        isCurrentMonth: employeeStats.isCurrentMonth,
+        currentDay: employeeStats.currentDay,
         totalMsgs: emp.totalMsgs,
         targetMsgs: emp.targetMsgs,
         totalSales: emp.totalSales,
@@ -412,11 +444,16 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
         bestCampaignConvRate: emp.bestCampaign.convRate,
         worstCampaign: emp.worstCampaign.name,
         worstCampaignConvRate: emp.worstCampaign.convRate,
+        previousMonthName: employeeStats.prevMonthName,
         momMsgsChange: emp.momMsgsChange,
         momConvChange: emp.momConvChange,
-        teamAvgMsgs: employeeStats.teamAvgMsgs,
-        teamAvgConv: employeeStats.teamAvgConv,
-        teamAvgRevenue: employeeStats.teamAvgRevenue,
+        momRevenueChange: emp.momRevenueChange,
+        sellerHistoricalAvgMsgs: emp.sellerHistAvgMsgs,
+        sellerHistoricalAvgConv: emp.sellerHistAvgConv,
+        sellerHistoricalAvgRevenue: emp.sellerHistAvgRevenue,
+        teamMonthAvgMsgs: employeeStats.teamAvgMsgs,
+        teamMonthAvgConv: employeeStats.teamAvgConv,
+        teamMonthAvgRevenue: employeeStats.teamAvgRevenue,
         rank: idx + 1,
         totalSellers: employeeStats.employees.length,
       };
@@ -428,12 +465,12 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       });
       const data = await res.json();
       if (data.success) {
-        setAiAnalyses(prev => ({ ...prev, [employeeName]: data.analysis }));
+        setAiAnalyses(prev => ({ ...prev, [`${activeEvalMonth}-${employeeName}`]: data.analysis }));
       } else {
-        setAiAnalyses(prev => ({ ...prev, [employeeName]: '⚠️ Erro ao gerar análise. Tente novamente.' }));
+        setAiAnalyses(prev => ({ ...prev, [`${activeEvalMonth}-${employeeName}`]: '⚠️ Erro ao gerar análise. Tente novamente.' }));
       }
     } catch {
-      setAiAnalyses(prev => ({ ...prev, [employeeName]: '⚠️ Erro de comunicação com a IA.' }));
+      setAiAnalyses(prev => ({ ...prev, [`${activeEvalMonth}-${employeeName}`]: '⚠️ Erro de comunicação com a IA.' }));
     } finally {
       setLoadingAI(prev => ({ ...prev, [employeeName]: false }));
     }
@@ -447,7 +484,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
 
   const isAnyLoading = Object.values(loadingAI).some(Boolean);
   const allAnalyzed = employeeStats.employees.length > 0 &&
-    employeeStats.employees.every(emp => !!aiAnalyses[emp.name]);
+    employeeStats.employees.every(emp => !!aiAnalyses[`${activeEvalMonth}-${emp.name}`]);
   // Variação MoM entre os dois últimos meses selecionados
   const momComparison = useMemo(() => {
     if (selectedMonths.length < 2) return null;
@@ -1204,8 +1241,8 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       >
         <div className="relative w-full max-w-4xl my-6 bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl shadow-violet-500/10 overflow-hidden">
 
-          {/* Header do Modal */}
-          <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800">
+          {/* Header do Modal com Seletor de Mês */}
+          <div className="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-violet-500/15 rounded-xl text-violet-400">
                 <BarChart2 className="w-5 h-5" />
@@ -1213,15 +1250,33 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
               <div>
                 <h2 className="text-lg font-black text-white tracking-tight">Análise de Desempenho por Funcionário</h2>
                 <p className="text-xs text-zinc-400">
-                  Período: {selectedMonths.map(m => monthLabels[m] || m).join(' + ')} · {employeeStats.employees.length} atendentes analisados
+                  Avaliando: <span className="text-white font-bold">{employeeStats.monthName}</span> · {employeeStats.employees.length} atendentes
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Seletor de Mês da Avaliação */}
+              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 px-3 py-1.5 rounded-xl">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <select
+                  value={activeEvalMonth}
+                  onChange={(e) => setEvalMonth(e.target.value)}
+                  className="bg-zinc-900 text-white font-bold text-xs focus:outline-none cursor-pointer border-none"
+                  style={{ colorScheme: 'dark', backgroundColor: '#18181b', color: '#ffffff' }}
+                >
+                  {allMonths.map(m => (
+                    <option key={m} value={m} style={{ backgroundColor: '#18181b', color: '#ffffff' }}>
+                      {monthLabels[m] || m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 onClick={handleAnalyzeAll}
                 disabled={isAnyLoading || allAnalyzed}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                   allAnalyzed
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 cursor-default'
                     : isAnyLoading
@@ -1237,6 +1292,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                   <><BrainCircuit className="w-3.5 h-3.5" /> Gerar Análise de Todos</>
                 )}
               </button>
+
               <button
                 onClick={() => setShowPerformanceModal(false)}
                 className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -1254,9 +1310,10 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
               <div>
                 <p className="text-sm font-bold text-amber-300">Meta Mínima Obrigatória: 60 mensagens por dia por funcionário</p>
                 <p className="text-xs text-amber-400/70 mt-0.5">
-                  Para este período ({employeeStats.totalDays} dias úteis considerados): a meta é de{' '}
-                  <span className="font-black text-amber-300">{employeeStats.targetMsgs} mensagens</span> por atendente.
-                  Meta mensal cheia: <span className="font-bold">1.800 msgs</span> · Semanal: <span className="font-bold">420 msgs</span>.
+                  {employeeStats.isCurrentMonth
+                    ? `Período em andamento em ${employeeStats.monthName} (até dia ${employeeStats.currentDay}): a meta mínima é de ${employeeStats.targetMsgs} mensagens.`
+                    : `Para o mês fechado de ${employeeStats.monthName} (${employeeStats.totalDays} dias): a meta foi de ${employeeStats.targetMsgs} mensagens.`}
+                  {' '}Meta mensal cheia: <span className="font-bold">1.800 msgs</span> · Semanal: <span className="font-bold">420 msgs</span>.
                 </p>
               </div>
             </div>
@@ -1279,7 +1336,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                   }`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate">{emp.name}</p>
-                    <p className="text-[10px] text-zinc-400">{emp.convRate.toFixed(1)}% conversão</p>
+                    <p className="text-[10px] text-zinc-400">{emp.convRate.toFixed(1)}% conversão em {employeeStats.monthName.split(' ')[0]}</p>
                     {i === 0 && <p className="text-[10px] text-amber-400 font-bold">🏆 Campeão do mês</p>}
                   </div>
                 </div>
@@ -1287,21 +1344,22 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
             </div>
 
             {/* Cards por Funcionário */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               {employeeStats.employees.map((emp, idx) => {
                 const diffMsgs = emp.totalMsgs - emp.targetMsgs;
                 const aboveMeta = diffMsgs >= 0;
                 const convAboveMeta = emp.convRate >= 6;
-                const aiText = aiAnalyses[emp.name];
+                const aiKey = `${activeEvalMonth}-${emp.name}`;
+                const aiText = aiAnalyses[aiKey];
                 const isLoadingAI = loadingAI[emp.name];
 
                 return (
                   <div
                     key={emp.name}
-                    className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
+                    className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-sm"
                   >
                     {/* Cabeçalho do Card */}
-                    <div className="flex items-center justify-between p-4 pb-3 border-b border-zinc-800">
+                    <div className="flex items-center justify-between p-4 pb-3 border-b border-zinc-800 bg-zinc-950/40">
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${
@@ -1314,8 +1372,10 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                           )}
                         </div>
                         <div>
-                          <p className="font-bold text-white">{emp.name}</p>
-                          <p className="text-[10px] text-zinc-500">{idx + 1}º lugar · {emp.campaigns.length} campanhas ativas</p>
+                          <p className="font-bold text-white text-sm">{emp.name}</p>
+                          <p className="text-[10px] text-zinc-400">
+                            {idx + 1}º no ranking de conversão · {emp.campaigns.length} campanhas ativas em {employeeStats.monthName}
+                          </p>
                         </div>
                       </div>
                       <button
@@ -1326,32 +1386,30 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                         {isLoadingAI ? (
                           <><Zap className="w-3.5 h-3.5 animate-pulse" /> Analisando...</>
                         ) : (
-                          <><BrainCircuit className="w-3.5 h-3.5" /> Analisar com IA</>
+                          <><BrainCircuit className="w-3.5 h-3.5" /> Analisar {employeeStats.monthName.split(' ')[0]}</>
                         )}
                       </button>
                     </div>
 
                     {/* KPIs do funcionário */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-zinc-800">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-zinc-800 border-b border-zinc-800">
                       {/* Msgs vs Meta */}
                       <div className="p-4">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Msgs Enviadas</p>
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Msgs ({employeeStats.monthName.split(' ')[0]})</p>
                         <p className={`text-xl font-black ${ aboveMeta ? 'text-emerald-400' : 'text-rose-400' }`}>
                           {emp.totalMsgs}
                         </p>
-                        <p className="text-[10px] text-zinc-500 mt-0.5">Meta mín: {emp.targetMsgs}</p>
-                        <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ aboveMeta ? 'text-emerald-400' : 'text-rose-400' }`}>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">Meta: {emp.targetMsgs}</p>
+                        <div className={`mt-1 flex items-center gap-1 text-[10px] font-bold ${ aboveMeta ? 'text-emerald-400' : 'text-rose-400' }`}>
                           {aboveMeta ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                           {aboveMeta ? '+' : ''}{diffMsgs} msgs vs meta
                         </div>
-                        {/* Barra de progresso */}
-                        <div className="mt-2 h-1.5 w-full bg-zinc-700 rounded-full overflow-hidden">
+                        <div className="mt-2 h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all ${ aboveMeta ? 'bg-emerald-500' : 'bg-rose-500' }`}
-                            style={{ width: `${Math.min(100, (emp.totalMsgs / emp.targetMsgs) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (emp.totalMsgs / (emp.targetMsgs || 1)) * 100)}%` }}
                           />
                         </div>
-                        <p className="text-[9px] text-zinc-600 mt-0.5">{((emp.totalMsgs / emp.targetMsgs) * 100).toFixed(0)}% da meta (mín. 60/dia)</p>
                       </div>
 
                       {/* Conversão */}
@@ -1362,9 +1420,9 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                         </p>
                         <p className="text-[10px] text-zinc-500 mt-0.5">Meta: 6% | {emp.totalSales} vendas</p>
                         {emp.momConvChange !== null && (
-                          <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ emp.momConvChange >= 0 ? 'text-emerald-400' : 'text-rose-400' }`}>
+                          <div className={`mt-1 flex items-center gap-1 text-[10px] font-bold ${ emp.momConvChange >= 0 ? 'text-emerald-400' : 'text-rose-400' }`}>
                             {emp.momConvChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            {emp.momConvChange >= 0 ? '+' : ''}{emp.momConvChange.toFixed(1)}% vs mês ant.
+                            {emp.momConvChange >= 0 ? '+' : ''}{emp.momConvChange.toFixed(1)}% vs {employeeStats.prevMonthName.split(' ')[0]}
                           </div>
                         )}
                       </div>
@@ -1373,58 +1431,66 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                       <div className="p-4">
                         <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Receita Gerada</p>
                         <p className="text-lg font-black text-emerald-400">
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(emp.revenue)}
+                          {formatMoney(emp.revenue)}
                         </p>
                         <p className="text-[10px] text-zinc-500 mt-0.5">
-                          Ticket médio: {emp.totalSales > 0
-                            ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(emp.revenue / emp.totalSales)
-                            : 'R$ 0,00'}
+                          {emp.revenue >= employeeStats.teamAvgRevenue ? '↑ Acima da média da eq.' : '↓ Abaixo da média da eq.'}
                         </p>
-                        <div className={`mt-1.5 text-[10px] font-semibold ${ emp.revenue >= employeeStats.teamAvgRevenue ? 'text-emerald-400' : 'text-zinc-400' }`}>
-                          {emp.revenue >= employeeStats.teamAvgRevenue ? '↑ Acima' : '↓ Abaixo'} da média da equipe
-                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-1">
+                          Média Eq: {formatMoney(employeeStats.teamAvgRevenue)}
+                        </p>
                       </div>
 
-                      {/* Melhor campanha */}
+                      {/* Comparativo vs Histórico Pessoal */}
                       <div className="p-4">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Melhor Campanha</p>
-                        <p className="text-sm font-bold text-indigo-300 leading-tight">
-                          {emp.bestCampaign.name !== 'N/A' ? ({
-                            'CASHBACK_1D': '⏰ Cashback 1D',
-                            'CASHBACK_5D': '⚡ Cashback 5D',
-                            'CASHBACK_10D': '🎁 Cashback 10D',
-                            'CASHBACK_15D': '🔥 Cashback 15D',
-                            'AUSENTE_45D': '💤 Ausente 45D',
-                            'OFERTA_90D': '🛡️ Inativo 90D',
-                            'POS_VENDA': '🤝 Pós-Venda',
-                            'CORRIDA_ALPHAVILLE': '🏃 Corrida',
-                            'LEADS_BPE25': '🎯 Leads BPE25',
-                          } as Record<string,string>)[emp.bestCampaign.name] || emp.bestCampaign.name : 'N/A'}
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Histórico Pessoal Médio</p>
+                        <p className="text-xs font-bold text-zinc-300">
+                          {emp.sellerHistAvgMsgs.toFixed(0)} msgs/mês · {emp.sellerHistAvgConv.toFixed(1)}% taxa
                         </p>
-                        <p className="text-[10px] text-zinc-500 mt-1">{emp.bestCampaign.convRate.toFixed(1)}% conversão</p>
-                        {emp.momMsgsChange !== null && (
-                          <div className={`mt-1.5 flex items-center gap-1 text-[10px] font-bold ${ emp.momMsgsChange >= 0 ? 'text-sky-400' : 'text-rose-400' }`}>
-                            {emp.momMsgsChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            Msgs: {emp.momMsgsChange >= 0 ? '+' : ''}{emp.momMsgsChange.toFixed(1)}% MoM
+                        <div className={`mt-1.5 text-[10px] font-bold ${emp.totalMsgs >= emp.sellerHistAvgMsgs ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {emp.totalMsgs >= emp.sellerHistAvgMsgs ? '↑ Acima' : '↓ Abaixo'} do padrão pessoal ({emp.totalMsgs - Math.round(emp.sellerHistAvgMsgs)} msgs)
+                        </div>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Melhor campanha: <span className="text-indigo-300 font-semibold">{campaignLabels[emp.bestCampaign.name] || emp.bestCampaign.name}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Campanhas do funcionário no mês */}
+                    <div className="p-4 bg-zinc-950/20">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-zinc-400 mb-2">Desempenho em Campanhas ({employeeStats.monthName}):</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {emp.campaigns.map(c => (
+                          <div key={c.name} className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex justify-between items-center text-xs">
+                            <div>
+                              <p className="font-semibold text-zinc-200 truncate max-w-[150px]">{campaignLabels[c.name] || c.name}</p>
+                              <p className="text-[10px] text-zinc-500">{c.msgs} msgs · {c.sales} vendas</p>
+                            </div>
+                            <div className="text-right">
+                              <span className={`px-1.5 py-0.5 rounded-md font-bold text-[10px] ${c.convRate > 0 ? 'bg-emerald-500/15 text-emerald-400' : 'text-zinc-500'}`}>
+                                {c.convRate.toFixed(1)}%
+                              </span>
+                              <p className="text-[10px] text-emerald-400/80 font-medium mt-0.5">{formatMoney(c.revenue)}</p>
+                            </div>
                           </div>
-                        )}
+                        ))}
                       </div>
                     </div>
 
                     {/* Análise IA */}
                     {(aiText || isLoadingAI) && (
-                      <div className="px-4 pb-4">
+                      <div className="px-4 pb-4 pt-2">
                         <div className="p-3.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
                           <div className="flex items-center gap-2 mb-2">
                             <BrainCircuit className="w-3.5 h-3.5 text-violet-400" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Análise da IA — Pontos de Melhoria</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Avaliação da IA ({employeeStats.monthName})</span>
                           </div>
                           {isLoadingAI ? (
                             <div className="flex items-center gap-2 text-xs text-zinc-400">
                               <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                               <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
                               <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                              <span>Gemini analisando dados...</span>
+                              <span>Gemini analisando histórico e equipe...</span>
                             </div>
                           ) : (
                             <p className="text-sm text-zinc-200 leading-relaxed">{aiText}</p>
@@ -1440,7 +1506,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
             {/* Footer do Modal */}
             <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
               <p className="text-[10px] text-zinc-600">
-                ⚡ Clique em "Analisar com IA" em cada card para gerar análise individual com pontos de melhoria.
+                ⚡ Selecione o mês no topo para avaliar qualquer período com comparativo do histórico individual e da equipe.
               </p>
               <button
                 onClick={() => setShowPerformanceModal(false)}

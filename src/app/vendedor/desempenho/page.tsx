@@ -1,10 +1,10 @@
 // src/app/vendedor/desempenho/page.tsx
-// Página de Desempenho do Vendedor Logado
+// Página de Desempenho do Vendedor Logado com Benchmark de Equipe
 
 import { createClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import MeuDesempenhoClient, { RawSellerInteraction } from './MeuDesempenhoClient';
+import MeuDesempenhoClient, { RawSellerInteraction, TeamMonthlySummary } from './MeuDesempenhoClient';
 
 export const revalidate = 0; // Dados em tempo real
 
@@ -25,7 +25,7 @@ export default async function VendedorDesempenhoPage() {
     }
   );
 
-  // Buscar perfil atualizado do vendedor
+  // 1. Buscar perfil atualizado do vendedor
   let sellerName = session.name || 'Vendedor';
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -37,8 +37,10 @@ export default async function VendedorDesempenhoPage() {
     sellerName = profile.name;
   }
 
-  // Buscar todas as interações do vendedor logado com paginação
+  // 2. Buscar todas as interações para calcular dados do vendedor e média agregada da equipe
   const sellerInteractions: RawSellerInteraction[] = [];
+  const teamMonthlyData: Record<string, { msgs: number; sales: number; revenue: number; sellersSet: Set<string> }> = {};
+
   let from = 0;
   const step = 1000;
   let hasMore = true;
@@ -58,15 +60,54 @@ export default async function VendedorDesempenhoPage() {
           created_at
         )
       `)
-      .eq('user_id', session.id)
       .order('created_at', { ascending: false })
       .range(from, from + step - 1);
 
     if (error || !batch || batch.length === 0) break;
-    sellerInteractions.push(...(batch as unknown as RawSellerInteraction[]));
+
+    for (const item of batch) {
+      const monthKey = item.created_at.slice(0, 7); // YYYY-MM
+      const hasSale = item.sales_attribution && item.sales_attribution.length > 0;
+      const rev = hasSale ? item.sales_attribution!.reduce((acc: number, cur: any) => acc + Number(cur.revenue || 0), 0) : 0;
+
+      // Agregação anônima de benchmark da equipe
+      if (!teamMonthlyData[monthKey]) {
+        teamMonthlyData[monthKey] = { msgs: 0, sales: 0, revenue: 0, sellersSet: new Set<string>() };
+      }
+      teamMonthlyData[monthKey].msgs++;
+      if (hasSale) teamMonthlyData[monthKey].sales++;
+      teamMonthlyData[monthKey].revenue += rev;
+      if (item.user_id) teamMonthlyData[monthKey].sellersSet.add(item.user_id);
+
+      // Dados individuais do vendedor logado
+      if (item.user_id === session.id) {
+        sellerInteractions.push(item as unknown as RawSellerInteraction);
+      }
+    }
+
     if (batch.length < step) break;
     from += step;
   }
+
+  // Montar objeto seguro de benchmark da equipe por mês
+  const teamMonthlySummary: Record<string, TeamMonthlySummary> = {};
+  Object.keys(teamMonthlyData).forEach(m => {
+    const d = teamMonthlyData[m];
+    const activeSellersCount = Math.max(1, d.sellersSet.size);
+    const avgMsgsPerSeller = d.msgs / activeSellersCount;
+    const avgConvRate = d.msgs > 0 ? (d.sales / d.msgs) * 100 : 0;
+    const avgRevenuePerSeller = d.revenue / activeSellersCount;
+
+    teamMonthlySummary[m] = {
+      totalMsgs: d.msgs,
+      totalSales: d.sales,
+      totalRevenue: d.revenue,
+      activeSellersCount,
+      avgMsgsPerSeller,
+      avgConvRate,
+      avgRevenuePerSeller
+    };
+  });
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -75,6 +116,7 @@ export default async function VendedorDesempenhoPage() {
           sellerName={sellerName}
           sellerId={session.id}
           interactions={sellerInteractions}
+          teamMonthlySummary={teamMonthlySummary}
         />
       </div>
     </div>

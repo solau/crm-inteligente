@@ -1,37 +1,54 @@
 // src/app/api/ai/meu-desempenho/route.ts
-// Endpoint de IA: Autoavaliação de Desempenho do Vendedor com Comparativo MTD (Month-To-Date)
+// Endpoint de IA: Autoavaliação do Vendedor por Mês com Comparativo Histórico Próprio e da Equipe
 
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-export interface CampaignMtdStats {
+export interface CampaignMonthStats {
   campaign: string;
   label: string;
-  currentMsgs: number;
-  currentSales: number;
-  currentConvRate: number;
-  currentRevenue: number;
-  prevMtdMsgs: number;
-  prevMtdSales: number;
-  prevMtdConvRate: number;
-  prevMtdRevenue: number;
+  monthMsgs: number;
+  monthSales: number;
+  monthConvRate: number;
+  monthRevenue: number;
+  prevMonthMsgs: number;
+  prevMonthSales: number;
+  prevMonthConvRate: number;
+  prevMonthRevenue: number;
 }
 
 export interface SellerSelfEvaluationPayload {
   sellerName: string;
+  monthEvaluated: string; // Ex: "Agosto de 2026"
+  isCurrentMonth: boolean;
   currentDay: number;
-  currentMonthName: string;
   previousMonthName: string;
-  targetMsgs: number; // 60 msgs/dia * currentDay
-  currentMtdMsgs: number;
-  currentMtdSales: number;
-  currentMtdConvRate: number;
-  currentMtdRevenue: number;
-  prevMtdMsgs: number;
-  prevMtdSales: number;
-  prevMtdConvRate: number;
-  prevMtdRevenue: number;
-  campaigns: CampaignMtdStats[];
+  targetMsgs: number; // 60 msgs/dia * dias do periodo
+  
+  // Dados do mês avaliado
+  monthMsgs: number;
+  monthSales: number;
+  monthConvRate: number;
+  monthRevenue: number;
+
+  // Comparativo com o mês imediatamente anterior
+  prevMonthMsgs: number;
+  prevMonthSales: number;
+  prevMonthConvRate: number;
+  prevMonthRevenue: number;
+
+  // Histórico do próprio vendedor (médias históricas)
+  sellerHistoricalAvgMsgs?: number;
+  sellerHistoricalAvgConv?: number;
+  sellerHistoricalAvgRevenue?: number;
+
+  // Benchmark da Equipe no Mês
+  teamMonthAvgMsgs: number;
+  teamMonthAvgConv: number;
+  teamMonthAvgRevenue: number;
+
+  // Campanhas
+  campaigns: CampaignMonthStats[];
 }
 
 export async function POST(req: Request) {
@@ -48,71 +65,64 @@ export async function POST(req: Request) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    const diffTarget = body.currentMtdMsgs - body.targetMsgs;
+    const diffTarget = body.monthMsgs - body.targetMsgs;
     const targetStatus = diffTarget >= 0
-      ? `✅ ACIMA DA META DIÁRIA: Você enviou ${body.currentMtdMsgs} msgs (está +${diffTarget} msgs à frente da meta mínima de ${body.targetMsgs} msgs até o dia ${body.currentDay}).`
-      : `🚨 ABAIXO DA META DIÁRIA: Você enviou ${body.currentMtdMsgs} msgs de um mínimo de ${body.targetMsgs} msgs esperadas até hoje (faltam ${Math.abs(diffTarget)} msgs para atingir 60 msgs/dia).`;
+      ? `✅ ACIMA DA META MÍNIMA DE 60 MSGS/DIA: Você enviou ${body.monthMsgs} msgs (+${diffTarget} msgs acima da meta de ${body.targetMsgs} msgs).`
+      : `🚨 ABAIXO DA META MÍNIMA DE 60 MSGS/DIA: Você enviou ${body.monthMsgs} msgs de um mínimo de ${body.targetMsgs} msgs necessárias (faltaram ${Math.abs(diffTarget)} msgs para manter 60/dia).`;
 
-    const deltaMsgs = body.currentMtdMsgs - body.prevMtdMsgs;
-    const deltaMsgsPercent = body.prevMtdMsgs > 0 ? ((deltaMsgs / body.prevMtdMsgs) * 100).toFixed(1) : (body.currentMtdMsgs > 0 ? '+100' : '0');
+    const deltaMsgs = body.monthMsgs - body.prevMonthMsgs;
+    const deltaMsgsPercent = body.prevMonthMsgs > 0 ? ((deltaMsgs / body.prevMonthMsgs) * 100).toFixed(1) : (body.monthMsgs > 0 ? '+100' : '0');
+    const deltaSales = body.monthSales - body.prevMonthSales;
+    const deltaRevenue = body.monthRevenue - body.prevMonthRevenue;
+    const deltaConv = (body.monthConvRate - body.prevMonthConvRate).toFixed(1);
 
-    const deltaSales = body.currentMtdSales - body.prevMtdSales;
-    const deltaRevenue = body.currentMtdRevenue - body.prevMtdRevenue;
-    const deltaConv = (body.currentMtdConvRate - body.prevMtdConvRate).toFixed(1);
+    const deltaVsTeamConv = (body.monthConvRate - body.teamMonthAvgConv).toFixed(1);
+    const deltaVsTeamMsgs = body.monthMsgs - body.teamMonthAvgMsgs;
+    const deltaVsTeamRevenue = body.monthRevenue - body.teamMonthAvgRevenue;
+
+    const selfHistoryComparison = (body.sellerHistoricalAvgMsgs !== undefined && body.sellerHistoricalAvgMsgs > 0)
+      ? `- Sua média histórica pessoal: ${body.sellerHistoricalAvgMsgs.toFixed(0)} msgs/mês, conversão média de ${body.sellerHistoricalAvgConv?.toFixed(1)}%, faturamento médio de R$ ${body.sellerHistoricalAvgRevenue?.toFixed(2)}.`
+      : `- Primeiro registro de histórico individual.`;
 
     const campaignsSummary = body.campaigns
-      .filter(c => c.currentMsgs > 0 || c.prevMtdMsgs > 0)
+      .filter(c => c.monthMsgs > 0 || c.prevMonthMsgs > 0)
       .map(c => {
-        return `- ${c.label}:
-   * Mês Atual (${body.currentMonthName} até dia ${body.currentDay}): ${c.currentMsgs} msgs, ${c.currentSales} vendas (${c.currentConvRate.toFixed(1)}% taxa), R$ ${c.currentRevenue.toFixed(2)}
-   * Mês Anterior (${body.previousMonthName} até dia ${body.currentDay}): ${c.prevMtdMsgs} msgs, ${c.prevMtdSales} vendas (${c.prevMtdConvRate.toFixed(1)}% taxa), R$ ${c.prevMtdRevenue.toFixed(2)}`;
+        return `- ${c.label}: ${c.monthMsgs} msgs enviadas, ${c.monthSales} vendas (${c.monthConvRate.toFixed(1)}% taxa), R$ ${c.monthRevenue.toFixed(2)} (vs ${c.prevMonthMsgs} msgs e R$ ${c.prevMonthRevenue.toFixed(2)} no mês anterior)`;
       })
       .join('\n');
 
     const prompt = `
-Você é o Diretor e Mentor de Performance Comercial do CRM Inteligente. 
-Faça uma avaliação executiva, profunda, humana e motivadora DIRETAMENTE PARA O VENDEDOR(A) ${body.sellerName}.
+Você é o Diretor e Mentor Comercial de Vendas.
+Faça uma avaliação detalhada, humana, profissional e motivadora DIRETAMENTE PARA O VENDEDOR(A) ${body.sellerName}.
 
-CONTEXTO TEMPORAL RIGOROSO:
-- Estamos no dia ${body.currentDay} de ${body.currentMonthName}.
-- A comparação é feita RIGOROSAMENTE com o mesmo período do mês anterior: Dia 1 ao dia ${body.currentDay} de ${body.previousMonthName}.
+MÊS AVALIADO: ${body.monthEvaluated} (${body.isCurrentMonth ? `Mês em andamento até o dia ${body.currentDay}` : 'Mês Fechado Completo'})
+META MÍNIMA OBRIGATÓRIA: 60 mensagens por dia (${body.targetMsgs} mensagens no período).
+STATUS DA META DE 60 MSGS/DIA: ${targetStatus}
 
-META OBRIGATÓRIA DE VOLUME:
-- Mínimo de 60 mensagens por dia.
-- Meta esperada até o dia ${body.currentDay}: ${body.targetMsgs} mensagens.
-- Status atual da meta: ${targetStatus}
+1. SEU RESULTADO EM ${body.monthEvaluated}:
+- Mensagens Enviadas: ${body.monthMsgs} msgs (${deltaMsgs >= 0 ? '+' : ''}${deltaMsgs} msgs ou ${deltaMsgsPercent}% vs ${body.previousMonthName})
+- Vendas Convertidas: ${body.monthSales} pedidos (${deltaSales >= 0 ? '+' : ''}${deltaSales} vs ${body.previousMonthName})
+- Taxa de Conversão: ${body.monthConvRate.toFixed(1)}% (${Number(deltaConv) >= 0 ? '+' : ''}${deltaConv} p.p. vs ${body.previousMonthName}) [Meta: 6%]
+- Receita Gerada: R$ ${body.monthRevenue.toFixed(2)} (${deltaRevenue >= 0 ? '+' : ''}R$ ${deltaRevenue.toFixed(2)} vs ${body.previousMonthName})
 
-DADOS CONSOLIDADOS DO VENDEDOR (ATÉ O DIA ${body.currentDay}):
-1. Mensagens Enviadas:
-   - ${body.currentMonthName}: ${body.currentMtdMsgs} msgs
-   - ${body.previousMonthName} (até dia ${body.currentDay}): ${body.prevMtdMsgs} msgs
-   - Variação: ${deltaMsgs >= 0 ? '+' : ''}${deltaMsgs} msgs (${deltaMsgsPercent}%)
+2. COMPARATIVO COM SEU PRÓPRIO HISTÓRICO:
+${selfHistoryComparison}
 
-2. Vendas Convertidas:
-   - ${body.currentMonthName}: ${body.currentMtdSales} pedidos
-   - ${body.previousMonthName} (até dia ${body.currentDay}): ${body.prevMtdSales} pedidos
-   - Variação: ${deltaSales >= 0 ? '+' : ''}${deltaSales} pedidos
+3. COMPARATIVO COM A MÉDIA DE TODA A EQUIPE EM ${body.monthEvaluated}:
+- Média de mensagens por vendedor na equipe: ${body.teamMonthAvgMsgs.toFixed(0)} msgs (Você está ${deltaVsTeamMsgs >= 0 ? `+${deltaVsTeamMsgs} msgs ACIMA` : `${Math.abs(deltaVsTeamMsgs)} msgs ABAIXO`} da média da equipe)
+- Taxa de conversão média da equipe: ${body.teamMonthAvgConv.toFixed(1)}% (Você está ${Number(deltaVsTeamConv) >= 0 ? `+${deltaVsTeamConv} p.p. ACIMA` : `${Math.abs(Number(deltaVsTeamConv))} p.p. ABAIXO`} da média da equipe)
+- Faturamento médio por vendedor na equipe: R$ ${body.teamMonthAvgRevenue.toFixed(2)} (Você está ${deltaVsTeamRevenue >= 0 ? `+R$ ${deltaVsTeamRevenue.toFixed(2)} ACIMA` : `-R$ ${Math.abs(deltaVsTeamRevenue).toFixed(2)} ABAIXO`} da média da equipe)
 
-3. Taxa de Conversão:
-   - ${body.currentMonthName}: ${body.currentMtdConvRate.toFixed(1)}% (Meta: 6%)
-   - ${body.previousMonthName} (até dia ${body.currentDay}): ${body.prevMtdConvRate.toFixed(1)}%
-   - Variação: ${Number(deltaConv) >= 0 ? '+' : ''}${deltaConv} p.p.
-
-4. Receita Gerada:
-   - ${body.currentMonthName}: R$ ${body.currentMtdRevenue.toFixed(2)}
-   - ${body.previousMonthName} (até dia ${body.currentDay}): R$ ${body.prevMtdRevenue.toFixed(2)}
-   - Variação: ${deltaRevenue >= 0 ? '+' : ''}R$ ${deltaRevenue.toFixed(2)}
-
-DETALHAMENTO POR CAMPANHA ATÉ O MOMENTO:
+4. DESEMPENHO POR CAMPANHA NO MÊS:
 ${campaignsSummary || 'Nenhuma interação registrada ainda nas campanhas.'}
 
-ESTRUTURA DA SUA RESPOSTA (Fale em 2ª pessoa: "Você...", seja direto, objetivo e inspirador):
-1. **Diagnóstico de Ritmo & Meta**: Avalie se o vendedor está cumprindo o ritmo mínimo de 60 msgs/dia. Se estiver abaixo, aponte a urgência com firmeza construtiva. Se estiver acima, parabenize pela disciplina.
-2. **Comparativo com o Mês Anterior (até a mesma data)**: Mostre com clareza se o vendedor evoluiu ou retrocedeu em volume, conversão e receita frente ao mesmo período de ${body.previousMonthName}.
-3. **Destaques de Campanhas**: Aponte a melhor campanha (maior tração/conversão) e a campanha onde o vendedor está deixando dinheiro na mesa.
-4. **Plano de Ação para os Próximos Dias**: Dê 2 recomendações táticas altamente práticas para fechar o mês com recorde.
+ESTRUTURA OBRIGATÓRIA DA RESPOSTA (Fale em 2ª pessoa: "Você...", use markdown e tópicos claros):
+1. **Ritmo & Meta de 60 msgs/dia**: Destaque se o vendedor bateu a meta mínima obrigatória de 60 mensagens por dia no mês de ${body.monthEvaluated}.
+2. **Evolução Pessoal (Mês a Mês e Histórico)**: Compare o resultado dele com o mês anterior (${body.previousMonthName}) e com a média histórica dele mesmo (se está em evolução ou precisa acelerar).
+3. **Seu Posicionamento vs Média da Equipe**: Mostre como o vendedor performou em relação à média geral do time (volume, conversão e faturamento).
+4. **Destaques de Campanhas & Plano de Ação**: Aponte a campanha de maior sucesso e dê 2 dicas práticas para converter mais nas campanhas fracas.
 
-Formate em texto limpo e elegante com markdown, usando tópicos destacados e emojis. Seja profissional, analítico e motivador.
+Seja motivador, perspicaz e focado em metas de alta performance!
     `.trim();
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
