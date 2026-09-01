@@ -8,12 +8,9 @@ import {
   Clock, 
   Flame, 
   CheckCircle2, 
-  Play, 
-  Pause,
-  ArrowUp,
-  ArrowDown,
-  RefreshCw,
-  BellRing
+  BellRing,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 
 interface HourlyGoalMonitorProps {
@@ -22,6 +19,48 @@ interface HourlyGoalMonitorProps {
   className?: string;
   compact?: boolean;
 }
+
+// Helper para obter data e hora exatas no fuso horário do Brasil (America/Sao_Paulo - UTC-3)
+const getBrasiliaTime = (date: Date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    weekday: 'short'
+  });
+
+  const parts = formatter.formatToParts(date);
+  const partMap: Record<string, string> = {};
+  parts.forEach(p => { partMap[p.type] = p.value; });
+
+  const year = parseInt(partMap.year, 10);
+  const month = parseInt(partMap.month, 10);
+  const day = parseInt(partMap.day, 10);
+  const hour = parseInt(partMap.hour, 10);
+  const minute = parseInt(partMap.minute, 10);
+  const second = parseInt(partMap.second, 10);
+
+  // Determinar o dia da semana em Brasília (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
+  const brDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const dayOfWeek = brDate.getUTCDay();
+
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    dayOfWeek,
+    isSunday: dayOfWeek === 0,
+    formattedTime: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  };
+};
 
 export default function HourlyGoalMonitor({
   initialMsgsToday,
@@ -43,18 +82,12 @@ export default function HourlyGoalMonitor({
   const lfoGainRef = useRef<GainNode | null>(null);
   const sirenTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Parâmetros de Jornada e Meta Horária
-  // Meta: 60 mensagens / dia em um expediente de 10h (08:00 às 18:00) -> 6 mensagens por hora
-  const WORK_START_HOUR = 8;
-  const WORK_END_HOUR = 18;
-  const TOTAL_HOURS = WORK_END_HOUR - WORK_START_HOUR; // 10 horas
-  const MSGS_PER_HOUR = 6; // 60 msgs / 10h
   const DAILY_GOAL = 60;
 
-  // Atualizar hora corrente no cliente
+  // Atualizar hora corrente no cliente a cada 30s
   useEffect(() => {
     setCurrentTime(new Date());
-    const interval = setInterval(() => setCurrentTime(new Date()), 30000); // a cada 30s
+    const interval = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -78,11 +111,11 @@ export default function HourlyGoalMonitor({
 
   useEffect(() => {
     fetchTodayMsgs();
-    const interval = setInterval(fetchTodayMsgs, 60000); // 1 minuto
+    const interval = setInterval(fetchTodayMsgs, 60000);
     return () => clearInterval(interval);
   }, [fetchTodayMsgs]);
 
-  // Cálculo da Meta Horária até o momento atual
+  // Cálculo da Meta Horária com Fuso de Brasília (Seg-Sáb: 09h-19h / Dom: 10h-16h)
   const calculation = (() => {
     if (!currentTime) {
       return {
@@ -91,37 +124,59 @@ export default function HourlyGoalMonitor({
         isBehind: false,
         hoursPassed: 0,
         formattedTime: '--:--',
-        ratePerHour: MSGS_PER_HOUR,
-        progressPercent: 0
+        isSunday: false,
+        scheduleLabel: 'Segunda a Sábado: 09h às 19h (6 msgs/h)',
+        ratePerHour: 6,
+        progressPercent: 0,
+        isShiftEnded: false,
+        isShiftNotStarted: false
       };
     }
 
-    const hour = currentTime.getHours();
-    const minute = currentTime.getMinutes();
-    const formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const brTime = getBrasiliaTime(currentTime);
+    const { hour, minute, isSunday, formattedTime } = brTime;
+
+    // Regras de Horário por Dia da Semana no Brasil:
+    // - Domingo: 10:00 às 16:00 (6 horas úteis -> 60/6 = 10 msgs/hora)
+    // - Segunda a Sábado: 09:00 às 19:00 (10 horas úteis -> 60/10 = 6 msgs/hora)
+    const startHour = isSunday ? 10 : 9;
+    const endHour = isSunday ? 16 : 19;
+    const totalShiftHours = endHour - startHour; // 6h no Dom / 10h nos outros dias
+    const ratePerHour = Math.round(DAILY_GOAL / totalShiftHours); // 10 msgs/h no Dom, 6 msgs/h Seg-Sáb
+
+    const currentDecimalHour = hour + (minute / 60);
 
     let hoursPassed = 0;
-    if (hour < WORK_START_HOUR) {
+    let isShiftNotStarted = false;
+    let isShiftEnded = false;
+
+    if (currentDecimalHour < startHour) {
       hoursPassed = 0;
-    } else if (hour >= WORK_END_HOUR) {
-      hoursPassed = TOTAL_HOURS;
+      isShiftNotStarted = true;
+    } else if (currentDecimalHour >= endHour) {
+      hoursPassed = totalShiftHours;
+      isShiftEnded = true;
     } else {
-      hoursPassed = (hour - WORK_START_HOUR) + (minute / 60);
+      hoursPassed = currentDecimalHour - startHour;
     }
 
-    // Meta esperada até o momento
+    // Meta esperada até o momento atual
     let expectedMsgs = 0;
-    if (hour < WORK_START_HOUR) {
+    if (isShiftNotStarted) {
       expectedMsgs = 0;
-    } else if (hour >= WORK_END_HOUR) {
+    } else if (isShiftEnded) {
       expectedMsgs = DAILY_GOAL;
     } else {
-      expectedMsgs = Math.round(hoursPassed * MSGS_PER_HOUR);
+      expectedMsgs = Math.round(hoursPassed * (DAILY_GOAL / totalShiftHours));
     }
 
     const deficit = expectedMsgs - msgsToday;
     const isBehind = expectedMsgs > 0 && deficit > 0;
     const progressPercent = Math.min(100, Math.round((msgsToday / DAILY_GOAL) * 100));
+
+    const scheduleLabel = isSunday
+      ? 'Domingo: 10h às 16h (Ritmo: 10 msgs/hora)'
+      : 'Segunda a Sábado: 09h às 19h (Ritmo: 6 msgs/hora)';
 
     return {
       expectedMsgs,
@@ -129,8 +184,12 @@ export default function HourlyGoalMonitor({
       isBehind,
       hoursPassed: Math.round(hoursPassed * 10) / 10,
       formattedTime,
-      ratePerHour: MSGS_PER_HOUR,
-      progressPercent
+      isSunday,
+      scheduleLabel,
+      ratePerHour,
+      progressPercent,
+      isShiftEnded,
+      isShiftNotStarted
     };
   })();
 
@@ -149,14 +208,12 @@ export default function HourlyGoalMonitor({
         ctx.resume();
       }
 
-      // Parar qualquer oscilador anterior
       stopSiren();
 
-      // Oscilador principal de sirene (onda dente de serra / triangular)
+      // Oscilador principal de sirene (sweep 600Hz a 950Hz)
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      // LFO para modular a frequência (efeito sweep de sirene de emergência: 600Hz a 950Hz)
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
 
@@ -164,13 +221,12 @@ export default function HourlyGoalMonitor({
       osc.frequency.setValueAtTime(750, ctx.currentTime);
 
       lfo.type = 'sine';
-      lfo.frequency.setValueAtTime(2.5, ctx.currentTime); // 2.5 ciclos de subida/descida por segundo
-      lfoGain.gain.setValueAtTime(200, ctx.currentTime); // amplitude de variação +/- 200Hz
+      lfo.frequency.setValueAtTime(2.5, ctx.currentTime);
+      lfoGain.gain.setValueAtTime(200, ctx.currentTime);
 
       lfo.connect(lfoGain);
       lfoGain.connect(osc.frequency);
 
-      // Volume suave
       gain.gain.setValueAtTime(0.01, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.2);
       gain.gain.setValueAtTime(0.18, ctx.currentTime + (durationMs / 1000) - 0.3);
@@ -220,30 +276,30 @@ export default function HourlyGoalMonitor({
     setIsPlayingSiren(false);
   }, []);
 
-  // Tocar sirene uma vez quando o usuário entrar ou quando detectar atraso
+  // Tocar sirene quando detectar atraso no ritmo
   const hasTriggeredSirenRef = useRef(false);
   useEffect(() => {
     if (calculation.isBehind && !isMuted && !hasTriggeredSirenRef.current && currentTime) {
       hasTriggeredSirenRef.current = true;
-      startSiren(4000); // Toca 4s de sirene
+      startSiren(4000);
     }
   }, [calculation.isBehind, isMuted, currentTime, startSiren]);
 
   return (
     <div className={`w-full transition-all duration-500 ${className}`}>
       {calculation.isBehind ? (
-        // 🚨 BANNER DE ALERTA: ABAIXO DA META HORÁRIA
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-rose-950/90 via-red-900/60 to-zinc-900/90 border-2 border-rose-500/60 p-5 md:p-6 shadow-2xl shadow-rose-950/50 animate-pulse-subtle">
+        // 🚨 BANNER DE ALERTA: ABAIXO DA META HORÁRIA NO HORÁRIO DO BRASIL
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-rose-950/95 via-red-900/70 to-zinc-900/95 border-2 border-rose-500/70 p-5 md:p-6 shadow-2xl shadow-rose-950/60">
           
           {/* Luz de Sirene de Fundo */}
-          <div className="absolute -top-24 -right-24 w-60 h-60 bg-rose-500/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-rose-500/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
             
             {/* Lado Esquerdo: Ícone de Sirene + Mensagem Explícita */}
             <div className="flex items-start gap-4">
               <div className="relative flex-shrink-0">
-                <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-lg shadow-rose-500/20 animate-bounce-short">
+                <div className="w-14 h-14 rounded-2xl bg-rose-500/25 border border-rose-500/50 flex items-center justify-center text-rose-400 shadow-lg shadow-rose-500/30">
                   <BellRing className={`w-7 h-7 ${isPlayingSiren ? 'animate-spin' : 'animate-pulse'}`} />
                 </div>
                 <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4">
@@ -258,7 +314,10 @@ export default function HourlyGoalMonitor({
                     🚨 ALERTA DE RITMO HORÁRIO
                   </span>
                   <span className="text-xs font-semibold text-rose-300 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" /> Agora: {calculation.formattedTime}
+                    <Clock className="w-3.5 h-3.5" /> {calculation.formattedTime} (Horário de Brasília)
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-300 border border-zinc-700">
+                    {calculation.scheduleLabel}
                   </span>
                 </div>
 
@@ -267,7 +326,7 @@ export default function HourlyGoalMonitor({
                 </h3>
 
                 <p className="text-xs md:text-sm text-zinc-300 leading-relaxed max-w-3xl">
-                  {sellerName ? `${sellerName}, você` : 'Você'} enviou <strong className="text-white font-black">{msgsToday}</strong> mensagens hoje, mas a meta acumulada até às {calculation.formattedTime} é de no mínimo <strong className="text-amber-300 font-black">{calculation.expectedMsgs} mensagens</strong> (ritmo obrigatório de <strong className="text-white">6 mensagens/hora</strong>, jornada das 08h às 18h).
+                  {sellerName ? `${sellerName}, você` : 'Você'} enviou <strong className="text-white font-black">{msgsToday}</strong> mensagens hoje, mas a meta esperada até às {calculation.formattedTime} é de no mínimo <strong className="text-amber-300 font-black">{calculation.expectedMsgs} mensagens</strong> ({calculation.ratePerHour} mensagens/hora no turno de {calculation.isSunday ? 'Domingo (10h às 16h)' : 'Segunda a Sábado (09h às 19h)'}).
                 </p>
               </div>
             </div>
@@ -347,16 +406,19 @@ export default function HourlyGoalMonitor({
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="text-sm font-bold text-white">
-                    Ritmo de Disparos em Dia (6 msgs / hora)
+                    Ritmo de Disparos em Dia ({calculation.ratePerHour} msgs / hora)
                   </h4>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                     Meta Cumprida
                   </span>
+                  <span className="text-[10px] text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded-md border border-zinc-800">
+                    {calculation.scheduleLabel}
+                  </span>
                 </div>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Você enviou <strong className="text-emerald-400 font-bold">{msgsToday}</strong> de <strong className="text-white">60 mensagens</strong> hoje. Meta esperada até às {calculation.formattedTime}: <strong className="text-white">{calculation.expectedMsgs} msgs</strong>.
+                <p className="text-xs text-zinc-400 mt-1">
+                  Você enviou <strong className="text-emerald-400 font-bold">{msgsToday}</strong> de <strong className="text-white">60 mensagens</strong> hoje. Meta esperada até às {calculation.formattedTime} (Brasília): <strong className="text-white">{calculation.expectedMsgs} msgs</strong>.
                 </p>
               </div>
             </div>

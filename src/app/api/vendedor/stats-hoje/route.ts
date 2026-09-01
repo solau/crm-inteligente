@@ -1,5 +1,5 @@
 // src/app/api/vendedor/stats-hoje/route.ts
-// Retorna a contagem de mensagens enviadas hoje pelo vendedor logado para o monitor horário
+// Retorna a contagem de mensagens enviadas hoje pelo vendedor logado considerando o fuso de Brasília (America/Sao_Paulo)
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -22,16 +22,33 @@ export async function GET() {
       }
     );
 
-    // Início do dia atual (00:00:00 local)
+    // Obter data atual no fuso horário do Brasil (America/Sao_Paulo)
     const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00.000Z`;
+    const formatter = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
 
-    // Buscar mensagens enviadas pelo vendedor hoje
+    const parts = formatter.formatToParts(now);
+    const partMap: Record<string, string> = {};
+    parts.forEach(p => { partMap[p.type] = p.value; });
+
+    const y = partMap.year;
+    const m = partMap.month;
+    const d = partMap.day;
+
+    // Início do dia em Brasília: YYYY-MM-DDT00:00:00-03:00 convertido para ISO string
+    // -03:00 significa 03:00:00 UTC
+    const startOfDayBrasiliaISO = new Date(`${y}-${m}-${d}T00:00:00-03:00`).toISOString();
+
+    // Buscar mensagens enviadas pelo vendedor hoje (a partir de 00:00 de Brasília)
     const { count, error } = await supabase
       .from('client_interactions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', session.id)
-      .gte('created_at', todayStr);
+      .gte('created_at', startOfDayBrasiliaISO);
 
     if (error) {
       console.error('Erro ao buscar mensagens de hoje:', error);
@@ -43,6 +60,7 @@ export async function GET() {
       sellerId: session.id,
       sellerName: session.name,
       msgsToday: count || 0,
+      startOfDay: startOfDayBrasiliaISO,
       timestamp: now.toISOString()
     });
   } catch (err: any) {
