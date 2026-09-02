@@ -104,6 +104,7 @@ export default function MeuDesempenhoClient({
     'POS_VENDA': '🤝 Pós-Venda (D+3)',
     'CORRIDA_ALPHAVILLE': '🏃 Corrida Alphaville',
     'LEADS_BPE25': '🎯 Leads BPE25',
+    'LEADS_WHATSAPP': '💬 Leads - Whatsapp',
     'OUTROS': '📌 Outros'
   };
 
@@ -156,6 +157,7 @@ export default function MeuDesempenhoClient({
       'POS_VENDA',
       'CORRIDA_ALPHAVILLE',
       'LEADS_BPE25',
+      'LEADS_WHATSAPP',
       'OUTROS'
     ]);
 

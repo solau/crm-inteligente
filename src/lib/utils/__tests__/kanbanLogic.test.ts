@@ -49,16 +49,31 @@ describe('Kanban Logic - Cooldown and Priority Rules', () => {
     expect(result.colBpe25[0].id).toBe('1');
   });
 
-  test('Lead importado (BPE25 / Corrida) que efetua primeira compra NÃO deve mais aparecer nas colunas de importação e deve entrar em POS_VENDA após 3 dias', () => {
+  test('Deve colocar em LEADS_WHATSAPP se o lead tem tag Leads - Whatsapp e não tem compra prévia', () => {
+    const lead = { ...baseClient, preferences: 'Origem: Leads - Whatsapp (Kommo)', total_spent: 0, last_purchase_date: null };
+    const result = getKanbanColumns([lead], {}, new Set());
+    expect(result.colLeadsWhatsapp).toHaveLength(1);
+    expect(result.colLeadsWhatsapp[0].id).toBe('1');
+  });
+
+  test('Lead de Leads - Whatsapp NÃO deve aparecer se recebeu mensagem nos últimos 15 dias (Anti-Spam)', () => {
+    const lead = { ...baseClient, preferences: 'Origem: Leads - Whatsapp (Kommo)', total_spent: 0, last_purchase_date: null };
+    const recentInteractions: Record<string, ClientInteractions> = {
+      '1': { latest: { date: createDate(-5), campaign: 'LEADS_WHATSAPP' }, latestPosVenda: null }
+    };
+    const result = getKanbanColumns([lead], recentInteractions, new Set());
+    expect(result.colLeadsWhatsapp).toHaveLength(0);
+  });
+
+  test('Lead importado (Leads - Whatsapp) que efetua primeira compra NÃO deve mais aparecer em Leads - Whatsapp e deve entrar em POS_VENDA após 3 dias', () => {
     const convertedLead = {
       ...baseClient,
-      preferences: 'Origem: Leads BPE25',
-      total_spent: 180,
+      preferences: 'Origem: Leads - Whatsapp (Kommo)',
+      total_spent: 250,
       last_purchase_date: createDate(-3) // Comprou há 3 dias
     };
     const result = getKanbanColumns([convertedLead], {}, new Set());
-    expect(result.colBpe25).toHaveLength(0);
-    expect(result.colCorridaAlphaville).toHaveLength(0);
+    expect(result.colLeadsWhatsapp).toHaveLength(0);
     expect(result.colPosVenda).toHaveLength(1);
     expect(result.colPosVenda[0].id).toBe('1');
   });

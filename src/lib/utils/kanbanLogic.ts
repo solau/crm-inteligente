@@ -14,6 +14,7 @@ export interface ClientInteractions {
 export interface KanbanColumns {
   colCorridaAlphaville: KanbanClient[];
   colBpe25: KanbanClient[];
+  colLeadsWhatsapp: KanbanClient[];
   colPosVenda: KanbanClient[];
   col1d: KanbanClient[];
   col5d: KanbanClient[];
@@ -61,6 +62,7 @@ export function getKanbanColumns(
 
   const colCorridaAlphaville: KanbanClient[] = [];
   const colBpe25: KanbanClient[] = [];
+  const colLeadsWhatsapp: KanbanClient[] = [];
   const colPosVenda: KanbanClient[] = [];
   const col1d: KanbanClient[] = [];
   const col5d: KanbanClient[] = [];
@@ -179,6 +181,31 @@ export function getKanbanColumns(
       continue;
     }
 
+    // Prioridade 0.2: Leads - Whatsapp (Apenas Prospectos que NUNCA compraram)
+    const isLeadsWhatsapp = c.preferences && typeof c.preferences === 'string' && (
+      c.preferences.toLowerCase().includes('leads - whatsapp') || 
+      c.preferences.toLowerCase().includes('leads_whatsapp') ||
+      c.preferences.toLowerCase().includes('kommo')
+    );
+    if (isLeadsWhatsapp && !hasPurchased) {
+      let isBlockedWhatsapp = false;
+      if (lastInt) {
+        const intDate = parseSafeDate(lastInt.date);
+        if (intDate) {
+          const daysSinceInt = Math.round((today.getTime() - intDate.getTime()) / (1000 * 60 * 60 * 24));
+          // Regra Anti-Spam: Intervalo mínimo estrito de 15 dias entre mensagens
+          if (daysSinceInt < 15) {
+            isBlockedWhatsapp = true;
+          }
+        }
+      }
+
+      if (!isBlockedWhatsapp) {
+        colLeadsWhatsapp.push(c);
+      }
+      continue;
+    }
+
     // Prioridade 1: Pós Venda
     // Regra:
     //   - Compra entre 3 e 7 dias atrás (só aparece a partir de 3 dias após a data da venda)
@@ -265,6 +292,7 @@ export function getKanbanColumns(
   // Ordenações
   colCorridaAlphaville.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colBpe25.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  colLeadsWhatsapp.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colPosVenda.sort((a, b) => new Date(b.last_purchase_date!).getTime() - new Date(a.last_purchase_date!).getTime());
   
   col1d.sort((a, b) => new Date(a.next_expire_date!).getTime() - new Date(b.next_expire_date!).getTime());
@@ -283,6 +311,7 @@ export function getKanbanColumns(
   return {
     colCorridaAlphaville,
     colBpe25,
+    colLeadsWhatsapp,
     colPosVenda,
     col1d,
     col5d,

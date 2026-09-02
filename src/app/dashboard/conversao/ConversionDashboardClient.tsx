@@ -86,6 +86,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       'POS_VENDA': '🤝 Pós-Venda (D+3)',
       'CORRIDA_ALPHAVILLE': '🏃 Corrida Alphaville',
       'LEADS_BPE25': '🎯 Leads BPE25',
+      'LEADS_WHATSAPP': '💬 Leads - Whatsapp',
       'OUTROS': '📌 Outros'
     };
 
