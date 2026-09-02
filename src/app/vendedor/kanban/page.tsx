@@ -193,7 +193,11 @@ export default async function KanbanPage() {
       msgs30d = myStats.m30;
       conv30d = msgs30d > 0 ? (myStats.s30 / msgs30d) * 100 : 0;
 
-      const otherUsers = Object.keys(statsByUser).filter(id => id !== session.id);
+      // Regra: Para médias de equipe, considerar apenas usuários ativos no mês (> 50 mensagens no mês)
+      const otherActiveUsers = Object.keys(statsByUser).filter(id => id !== session.id && statsByUser[id].m30 > 50);
+      const otherUsers = otherActiveUsers.length > 0 
+        ? otherActiveUsers 
+        : Object.keys(statsByUser).filter(id => id !== session.id);
       if (otherUsers.length > 0) {
         // Averages
         let teamM1 = 0;

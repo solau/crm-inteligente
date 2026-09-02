@@ -39,7 +39,8 @@ export default async function VendedorDesempenhoPage() {
 
   // 2. Buscar todas as interações para calcular dados do vendedor e média agregada da equipe
   const sellerInteractions: RawSellerInteraction[] = [];
-  const teamMonthlyData: Record<string, { msgs: number; sales: number; revenue: number; sellersSet: Set<string> }> = {};
+  // Agregação por mês e por usuário para filtrar apenas ativos (> 50 msgs)
+  const sellerMonthlyStats: Record<string, Record<string, { msgs: number; sales: number; revenue: number }>> = {};
 
   let from = 0;
   const step = 1000;
@@ -70,14 +71,18 @@ export default async function VendedorDesempenhoPage() {
       const hasSale = item.sales_attribution && item.sales_attribution.length > 0;
       const rev = hasSale ? item.sales_attribution!.reduce((acc: number, cur: any) => acc + Number(cur.revenue || 0), 0) : 0;
 
-      // Agregação anônima de benchmark da equipe
-      if (!teamMonthlyData[monthKey]) {
-        teamMonthlyData[monthKey] = { msgs: 0, sales: 0, revenue: 0, sellersSet: new Set<string>() };
+      // Agregação por usuário para benchmark da equipe
+      if (item.user_id) {
+        if (!sellerMonthlyStats[monthKey]) {
+          sellerMonthlyStats[monthKey] = {};
+        }
+        if (!sellerMonthlyStats[monthKey][item.user_id]) {
+          sellerMonthlyStats[monthKey][item.user_id] = { msgs: 0, sales: 0, revenue: 0 };
+        }
+        sellerMonthlyStats[monthKey][item.user_id].msgs++;
+        if (hasSale) sellerMonthlyStats[monthKey][item.user_id].sales++;
+        sellerMonthlyStats[monthKey][item.user_id].revenue += rev;
       }
-      teamMonthlyData[monthKey].msgs++;
-      if (hasSale) teamMonthlyData[monthKey].sales++;
-      teamMonthlyData[monthKey].revenue += rev;
-      if (item.user_id) teamMonthlyData[monthKey].sellersSet.add(item.user_id);
 
       // Dados individuais do vendedor logado
       if (item.user_id === session.id) {
@@ -89,19 +94,28 @@ export default async function VendedorDesempenhoPage() {
     from += step;
   }
 
-  // Montar objeto seguro de benchmark da equipe por mês
+  // Montar objeto seguro de benchmark da equipe por mês considerando apenas usuários ativos (> 50 msgs)
   const teamMonthlySummary: Record<string, TeamMonthlySummary> = {};
-  Object.keys(teamMonthlyData).forEach(m => {
-    const d = teamMonthlyData[m];
-    const activeSellersCount = Math.max(1, d.sellersSet.size);
-    const avgMsgsPerSeller = d.msgs / activeSellersCount;
-    const avgConvRate = d.msgs > 0 ? (d.sales / d.msgs) * 100 : 0;
-    const avgRevenuePerSeller = d.revenue / activeSellersCount;
+  Object.keys(sellerMonthlyStats).forEach(m => {
+    const allUsersInMonth = Object.values(sellerMonthlyStats[m]);
+
+    // Regra: Para as médias da equipe, considerar apenas usuários ativos no mês que mandaram mais de 50 mensagens
+    const activeUsers = allUsersInMonth.filter(u => u.msgs > 50);
+    const pool = activeUsers.length > 0 ? activeUsers : allUsersInMonth.filter(u => u.msgs > 0);
+
+    const activeSellersCount = Math.max(1, pool.length);
+    const totalMsgs = pool.reduce((acc, u) => acc + u.msgs, 0);
+    const totalSales = pool.reduce((acc, u) => acc + u.sales, 0);
+    const totalRevenue = pool.reduce((acc, u) => acc + u.revenue, 0);
+
+    const avgMsgsPerSeller = totalMsgs / activeSellersCount;
+    const avgConvRate = totalMsgs > 0 ? (totalSales / totalMsgs) * 100 : 0;
+    const avgRevenuePerSeller = totalRevenue / activeSellersCount;
 
     teamMonthlySummary[m] = {
-      totalMsgs: d.msgs,
-      totalSales: d.sales,
-      totalRevenue: d.revenue,
+      totalMsgs,
+      totalSales,
+      totalRevenue,
       activeSellersCount,
       avgMsgsPerSeller,
       avgConvRate,

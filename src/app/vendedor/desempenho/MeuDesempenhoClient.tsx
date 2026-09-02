@@ -729,7 +729,7 @@ export default function MeuDesempenhoClient({
             </div>
             <div>
               <h3 className="font-bold text-white text-base">Comparativo vs Média da Equipe ({monthData.monthName})</h3>
-              <p className="text-xs text-zinc-400">Seu desempenho posicionado frente à média de {monthData.teamStats.activeSellersCount} atendentes.</p>
+              <p className="text-xs text-zinc-400">Seu desempenho posicionado frente à média de {monthData.teamStats.activeSellersCount} atendente(s) ativo(s) (&gt; 50 msgs no mês).</p>
             </div>
           </div>
 

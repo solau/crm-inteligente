@@ -343,11 +343,16 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
     const validSellers = Object.keys(sellerEvalMap).filter(s => s !== 'Sistema / Sem Vendedor');
     const allStats = validSellers.map(s => sellerEvalMap[s]);
 
-    const teamAvgMsgs = allStats.length > 0 ? allStats.reduce((a, s) => a + s.totalMsgs, 0) / allStats.length : 0;
-    const teamAvgConv = allStats.length > 0
-      ? allStats.reduce((a, s) => a + (s.totalMsgs > 0 ? s.totalSales / s.totalMsgs : 0), 0) / allStats.length * 100
+    // Regra: Para as médias da equipe, considerar apenas usuários ativos no mês com mais de 50 mensagens
+    const activeTeamStats = allStats.filter(s => s.totalMsgs > 50);
+    const teamPool = activeTeamStats.length > 0 ? activeTeamStats : allStats.filter(s => s.totalMsgs > 0);
+
+    const teamAvgMsgs = teamPool.length > 0 ? teamPool.reduce((a, s) => a + s.totalMsgs, 0) / teamPool.length : 0;
+    const teamAvgConv = teamPool.length > 0
+      ? teamPool.reduce((a, s) => a + (s.totalMsgs > 0 ? s.totalSales / s.totalMsgs : 0), 0) / teamPool.length * 100
       : 0;
-    const teamAvgRevenue = allStats.length > 0 ? allStats.reduce((a, s) => a + s.revenue, 0) / allStats.length : 0;
+    const teamAvgRevenue = teamPool.length > 0 ? teamPool.reduce((a, s) => a + s.revenue, 0) / teamPool.length : 0;
+    const teamActiveCount = teamPool.length;
 
     const result = allStats.map(s => {
       const convRate = s.totalMsgs > 0 ? (s.totalSales / s.totalMsgs) * 100 : 0;
@@ -416,6 +421,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
       teamAvgMsgs,
       teamAvgConv,
       teamAvgRevenue,
+      teamActiveCount,
       isCurrentMonth,
       currentDay: daysToEvaluate,
       monthName: monthLabels[activeEvalMonth] || activeEvalMonth,
@@ -1437,7 +1443,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
                           {emp.revenue >= employeeStats.teamAvgRevenue ? '↑ Acima da média da eq.' : '↓ Abaixo da média da eq.'}
                         </p>
                         <p className="text-[10px] text-zinc-400 mt-1">
-                          Média Eq: {formatMoney(employeeStats.teamAvgRevenue)}
+                          Média Eq. ({employeeStats.teamActiveCount || 0} ativos &gt; 50 msgs): {formatMoney(employeeStats.teamAvgRevenue)}
                         </p>
                       </div>
 
