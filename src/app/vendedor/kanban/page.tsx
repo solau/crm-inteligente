@@ -4,7 +4,18 @@ import SyncKanbanButton from '@/components/SyncKanbanButton';
 import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
 import { getSession } from '@/lib/auth';
 
-export const revalidate = 0; // Para garantir que os dados estejam sempre frescos
+function isSamePhone(p1: string | null | undefined, p2: string | null | undefined): boolean {
+  if (!p1 || !p2) return false;
+  const d1 = p1.replace(/\D/g, '');
+  const d2 = p2.replace(/\D/g, '');
+  if (d1 === d2) return true;
+  if (d1.length >= 10 && d2.length >= 10) {
+    const k1 = `${d1.slice(0, 2)}${d1.slice(-8)}`;
+    const k2 = `${d2.slice(0, 2)}${d2.slice(-8)}`;
+    return k1 === k2;
+  }
+  return false;
+}
 
 export default async function KanbanPage() {
   const session = await getSession();
@@ -69,16 +80,22 @@ export default async function KanbanPage() {
     if (data && data.length > 0) {
       for (const row of data) {
         row.preferences = prefMap.get(row.id) || null;
-        const existingIdx = clients.findIndex(c => c.id === row.id || (c.phone && row.phone && c.phone === row.phone));
+        const existingIdx = clients.findIndex(c => c.id === row.id || isSamePhone(c.phone, row.phone));
         if (existingIdx === -1) {
           clients.push(row);
         } else {
-          // Se o novo registro tiver mais cashback ou maior lead_score, substitui o antigo (merge básico)
           const existing = clients[existingIdx];
-          const existingScore = (existing.cashback_balance || 0) * 1000 + (existing.lead_score || 0);
-          const newScore = (row.cashback_balance || 0) * 1000 + (row.lead_score || 0);
-          if (newScore > existingScore) {
+          const hasPurchaseExisting = (existing.total_spent && existing.total_spent > 0) || Boolean(existing.last_purchase_date);
+          const hasPurchaseNew = (row.total_spent && row.total_spent > 0) || Boolean(row.last_purchase_date);
+          
+          if (!hasPurchaseExisting && hasPurchaseNew) {
             clients[existingIdx] = row;
+          } else if (!hasPurchaseExisting && !hasPurchaseNew) {
+            const existingScore = (existing.cashback_balance || 0) * 1000 + (existing.lead_score || 0);
+            const newScore = (row.cashback_balance || 0) * 1000 + (row.lead_score || 0);
+            if (newScore > existingScore) {
+              clients[existingIdx] = row;
+            }
           }
         }
       }
