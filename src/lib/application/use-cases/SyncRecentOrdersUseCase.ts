@@ -40,7 +40,7 @@ export class SyncRecentOrdersUseCase {
       const token = await blingProvider.getValidToken();
       if (token) {
         // Busca pedidos de venda do Bling a partir da data inicial
-        const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas?dataInicial=${dateStr}&limite=100`, {
+        const res = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas?dataInicial=${dateStr}&limite=100`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const json = await res.json();

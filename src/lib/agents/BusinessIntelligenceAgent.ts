@@ -63,7 +63,7 @@ export class BusinessIntelligenceAgent {
       const token = await blingProvider.getValidToken();
 
       if (token) {
-        const res = await fetch('https://www.bling.com.br/Api/v3/produtos?limite=100', {
+        const res = await fetch('https://api.bling.com.br/Api/v3/produtos?limite=100', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 

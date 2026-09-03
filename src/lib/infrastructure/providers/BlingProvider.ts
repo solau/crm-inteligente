@@ -232,7 +232,7 @@ export class BlingProvider {
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
 
     try {
-      const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas/${orderId}`, {
+      const res = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${orderId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const detail = await res.json();
@@ -262,7 +262,7 @@ export class BlingProvider {
         try {
           await sleep(400); // Respeita rate limit de 3/seg
           // Usa fetch direto pois a SDK bling-erp-api pode ter problemas com .find()
-          const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas/${pedido.id}`, {
+          const res = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${pedido.id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const detail = await res.json();
@@ -315,7 +315,7 @@ export class BlingProvider {
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
     
     try {
-      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos/${contactId}`, {
+      const res = await fetch(`https://api.bling.com.br/Api/v3/contatos/${contactId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const result = await res.json();
@@ -340,7 +340,7 @@ export class BlingProvider {
 
     for (const searchStr of variants) {
       try {
-        const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(searchStr)}`, {
+        const res = await fetch(`https://api.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(searchStr)}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const result = await res.json();
@@ -360,7 +360,7 @@ export class BlingProvider {
     if (!token) throw new Error('Bling Provider não inicializado ou token inválido');
 
     try {
-      const res = await fetch(`https://www.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(name)}`, {
+      const res = await fetch(`https://api.bling.com.br/Api/v3/contatos?pesquisa=${encodeURIComponent(name)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const result = await res.json();
@@ -385,7 +385,7 @@ export class BlingProvider {
 
     while (fetching) {
       try {
-        const res = await fetch(`https://www.bling.com.br/Api/v3/pedidos/vendas?idContato=${contactId}&pagina=${page}&limite=100`, {
+        const res = await fetch(`https://api.bling.com.br/Api/v3/pedidos/vendas?idContato=${contactId}&pagina=${page}&limite=100`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const result = await res.json();
@@ -418,7 +418,7 @@ export class BlingProvider {
 
     // Monta a query string: ?idsProdutos[]=1&idsProdutos[]=2
     const qs = productIds.map(id => `idsProdutos[]=${id}`).join('&');
-    const url = `https://www.bling.com.br/Api/v3/estoques/saldos?${qs}`;
+    const url = `https://api.bling.com.br/Api/v3/estoques/saldos?${qs}`;
 
     console.log(`[BlingProvider] Buscando saldo de estoque para ${productIds.length} produtos.`);
     try {
