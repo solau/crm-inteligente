@@ -1,5 +1,16 @@
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 
+// Converte um timestamp do Supabase (ISO UTC ou 'YYYY-MM-DD HH:mm:ss+TZ') para Date.
+// O Supabase retorna timestamps com fuso já em UTC (ex: '2026-08-31T03:07:43.696966+00:00').
+// Alguns drivers retornam com espaço ao invés de 'T' — corrigimos aqui.
+function parseDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  // Supabase a vezes retorna '2026-08-31 03:07:43+00' (com espaço): normalizamos para ISO 8601
+  const normalized = raw.replace(' ', 'T');
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export interface ReconciliationReport {
   score: number;
   reconciledCount: number;
@@ -180,11 +191,13 @@ export class DataReconciliationAgent {
         const order = uniqueOrdersMap.get(attr.order_id);
         const linkedInt = interactionsById.get(attr.interaction_id);
 
-        const orderDateClean = (order?.created_at || attr.created_at)?.replace(' ', '+') || new Date().toISOString();
-        const orderTime = new Date(orderDateClean).getTime();
+        // Usa parseDate para normalizar corretamente (substitui espaço por T, não por +)
+        const orderDateRaw = order?.created_at || attr.created_at;
+        const orderDateObj = parseDate(orderDateRaw) || new Date();
+        const orderTime = orderDateObj.getTime();
 
-        const intDateClean = linkedInt?.created_at ? linkedInt.created_at.replace(' ', '+') : null;
-        const intTime = intDateClean ? new Date(intDateClean).getTime() : null;
+        const intDateObj = parseDate(linkedInt?.created_at ?? null);
+        const intTime = intDateObj ? intDateObj.getTime() : null;
 
         // Se a interação vinculada ocorreu DEPOIS da venda, é uma atribuição inválida!
         const isInvalid = !intTime || intTime >= orderTime;
@@ -193,7 +206,9 @@ export class DataReconciliationAgent {
           // Tenta encontrar se havia uma interação prévia legítima para esse cliente
           const clientInts = order?.client_id ? interactionsByClient.get(order.client_id) : [];
           const truePriorInt = (clientInts || []).find(int => {
-            const trueIntTime = new Date(int.created_at.replace(' ', '+')).getTime();
+            const trueIntObj = parseDate(int.created_at);
+            if (!trueIntObj) return false;
+            const trueIntTime = trueIntObj.getTime();
             const diffDays = (orderTime - trueIntTime) / (1000 * 60 * 60 * 24);
             return trueIntTime < orderTime && diffDays <= 30;
           });
@@ -228,12 +243,13 @@ export class DataReconciliationAgent {
           const clientInts = interactionsByClient.get(order.client_id);
           if (!clientInts || clientInts.length === 0) continue;
 
-          const orderDateClean = order.created_at ? order.created_at.replace(' ', '+') : new Date().toISOString();
-          const orderTime = new Date(orderDateClean).getTime();
+          const orderDateObj2 = parseDate(order.created_at) || new Date();
+          const orderTime = orderDateObj2.getTime();
 
           const validInt = clientInts.find(int => {
-            const intDateClean = int.created_at ? int.created_at.replace(' ', '+') : new Date().toISOString();
-            const intTime = new Date(intDateClean).getTime();
+            const intDateObj = parseDate(int.created_at);
+            if (!intDateObj) return false;
+            const intTime = intDateObj.getTime();
             const diffDays = (orderTime - intTime) / (1000 * 60 * 60 * 24);
             return intTime < orderTime && diffDays <= 30;
           });

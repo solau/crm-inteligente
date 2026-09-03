@@ -162,12 +162,20 @@ export class ProcessBlingWebhookUseCase {
 
     // 5. Atribuição de Conversão (Tracking) ANTECIPADA
     // Data exata em que o pedido foi criado no Bling ou recebido via webhook
+    //
+    // REGRA DE TIMEZONE BRASIL (UTC-3):
+    // O Bling retorna fullOrder.data como 'YYYY-MM-DD' (sem hora).
+    // Usamos a hora real do webhook (now) quando o pedido é de hoje.
+    // Para pedidos retroativos, usamos T23:59:59.000-03:00 (fim do dia BRT)
+    // para garantir que interações enviadas em qualquer hora do dia da venda
+    // sejam elegíveis para atribuição (intTime < saleTime).
     const nowIso = new Date().toISOString();
     let saleDateStr = nowIso;
     if (fullOrder.data) {
       const isToday = fullOrder.data === nowIso.split('T')[0];
       if (!isToday) {
-        saleDateStr = `${fullOrder.data}T00:00:00.000Z`;
+        // Fim do dia em horário de Brasília (UTC-3) = 23:59:59 BRT
+        saleDateStr = `${fullOrder.data}T23:59:59.000-03:00`;
       }
     }
 
