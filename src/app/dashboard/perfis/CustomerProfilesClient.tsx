@@ -1,5 +1,7 @@
 'use client';
 
+import { formatDate } from '@/lib/utils/dateUtils';
+
 import React, { useState, useMemo } from 'react';
 import { 
   Users, 
@@ -499,7 +501,7 @@ export default function CustomerProfilesClient({ clients }: CustomerProfilesClie
                         {c.last_purchase_date ? (
                           <div>
                             <span className="font-semibold text-foreground">
-                              {new Date(c.last_purchase_date).toLocaleDateString('pt-BR')}
+                              {formatDate(c.last_purchase_date)}
                             </span>
                             <div className="text-[11px] text-muted-foreground">
                               {c.recencyDays === 0 ? 'Hoje' : `há ${c.recencyDays}d`}

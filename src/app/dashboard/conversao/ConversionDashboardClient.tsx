@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { formatMonthYear } from '@/lib/utils/dateUtils';
 import { 
   Users, 
   Calendar, 
@@ -72,7 +73,7 @@ export default function ConversionDashboardClient({ interactions }: ConversionDa
     months.forEach(m => {
       const [year, month] = m.split('-');
       const d = new Date(Number(year), Number(month) - 1, 1);
-      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      const label = formatMonthYear(d);
       mLabels[m] = label.charAt(0).toUpperCase() + label.slice(1);
     });
 

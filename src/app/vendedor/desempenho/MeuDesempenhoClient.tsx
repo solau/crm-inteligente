@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CampaignMonthStats } from '@/app/api/ai/meu-desempenho/route';
 import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
+import { formatMonthYear } from '@/lib/utils/dateUtils';
 
 export interface RawSellerInteraction {
   id: string;
@@ -82,7 +83,7 @@ export default function MeuDesempenhoClient({
     sortedMonths.forEach(m => {
       const [year, month] = m.split('-');
       const d = new Date(Number(year), Number(month) - 1, 1);
-      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      const label = formatMonthYear(d);
       mLabels[m] = label.charAt(0).toUpperCase() + label.slice(1);
     });
 

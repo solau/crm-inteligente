@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { formatDateTime, formatDate } from '@/lib/utils/dateUtils';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -74,7 +75,7 @@ export default async function MensagensPage() {
                     return (
                       <tr key={msg.id} className="hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {new Date(msg.created_at).toLocaleString('pt-BR')}
+                          {formatDateTime(msg.created_at)}
                         </td>
                         <td className="px-6 py-4 font-medium text-white/90">
                           {client?.name || 'Cliente Removido'}
@@ -97,7 +98,7 @@ export default async function MensagensPage() {
                             return (
                               <div>
                                 <span className="text-white/80 block">
-                                  {nextDate.toLocaleDateString('pt-BR')}
+                                  {formatDate(nextDate)}
                                 </span>
                                 {isReleased ? (
                                   <span className="text-emerald-400 text-xs font-semibold">✅ Liberado</span>
@@ -118,7 +119,7 @@ export default async function MensagensPage() {
                                 Pedido #{orderId}
                               </span>
                               <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                                {new Date(msg.sales_attribution[0].created_at).toLocaleDateString('pt-BR')}
+                                {formatDate(msg.sales_attribution[0].created_at)}
                               </span>
                             </div>
                           ) : (

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { CheckCircle2, Timer, XCircle, ShoppingBag, AlertCircle } from 'lucide-react';
 
 import { CashbackLedgerEntry } from '@/lib/infrastructure/repositories/CashbackRepository';
+import { formatDate } from '@/lib/utils/dateUtils';
 
 interface CashbackLedgerTableProps {
   ledger: CashbackLedgerEntry[];
@@ -72,10 +73,10 @@ export default function CashbackLedgerTable({ ledger }: CashbackLedgerTableProps
                     </div>
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">
-                    {new Date(l.created_at || '').toLocaleDateString('pt-BR')}
+                    {formatDate(l.created_at)}
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">
-                    {l.expires_at ? new Date(l.expires_at).toLocaleDateString('pt-BR') : '-'}
+                    {formatDate(l.expires_at)}
                   </td>
                   <td className="px-5 py-3 text-right text-muted-foreground">
                     R$ {Number(l.original_amount).toFixed(2).replace('.', ',')}

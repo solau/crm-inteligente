@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { calculateRoiStats } from '@/lib/utils/roiLogic';
+import { formatDate, formatDateTime, formatMonthYear } from '@/lib/utils/dateUtils';
 import { 
   Users, 
   UserPlus, 
@@ -281,7 +282,7 @@ export default async function AdminDashboardPage() {
                         {c.phone && <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">{c.phone}</span>}
                       </td>
                       <td className="py-4 px-5 text-muted-foreground">
-                        {c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString('pt-BR') : '-'}
+                        {c.last_purchase_date ? formatDate(c.last_purchase_date) : '-'}
                       </td>
                       <td className="py-4 px-5 text-right font-black text-emerald-500">
                         {formatMoney(Number(c.total_spent))}
@@ -308,7 +309,7 @@ export default async function AdminDashboardPage() {
             </div>
             
             <h3 className="font-bold text-lg text-foreground relative z-10">Vendedor do Mês</h3>
-            <p className="text-xs text-muted-foreground mb-6 relative z-10">Maior receita em {new Date().toLocaleString('pt-BR', { month: 'long' })}</p>
+            <p className="text-xs text-muted-foreground mb-6 relative z-10">Maior receita em {formatMonthYear(new Date())}</p>
 
             <div className="flex-1 flex flex-col justify-center items-center w-full relative z-10">
               <p className="text-2xl font-black text-foreground capitalize mb-2">{bestSeller.name}</p>
@@ -351,7 +352,7 @@ export default async function AdminDashboardPage() {
                 <tbody className="divide-y divide-border">
                   {alerts.map((alert, idx) => (
                     <tr key={idx} className="hover:bg-muted/10 transition-colors">
-                      <td className="py-3 px-5 whitespace-nowrap">{new Date(alert.created_at).toLocaleString('pt-BR')}</td>
+                      <td className="py-3 px-5 whitespace-nowrap">{formatDateTime(alert.created_at)}</td>
                       <td className="py-3 px-5 font-bold">#{alert.order_id}</td>
                       <td className="py-3 px-5 font-medium capitalize">{(alert.clients as any)?.name || 'Desconhecido'}</td>
                       <td className="py-3 px-5 text-rose-500">{alert.message}</td>

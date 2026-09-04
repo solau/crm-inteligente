@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { formatDate, daysAgo } from '@/lib/utils/dateUtils';
 
 export class GeminiService {
   private tenantId: string;
@@ -24,8 +25,8 @@ export class GeminiService {
 
     if (cliente.last_purchase_date) {
       const lastDate = new Date(cliente.last_purchase_date);
-      diasSemComprar = Math.max(0, Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
-      dataUltimaCompraStr = lastDate.toLocaleDateString('pt-BR');
+      diasSemComprar = daysAgo(cliente.last_purchase_date) ?? 999;
+      dataUltimaCompraStr = formatDate(cliente.last_purchase_date);
     }
 
     // Extrai produtos das últimas compras

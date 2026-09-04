@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import { formatTime } from '@/lib/utils/dateUtils';
 import {
   Bot,
   Activity,
@@ -209,7 +210,7 @@ export default function AgentesDashboardPage() {
             </span>
             <span className="text-[11px] text-muted-foreground mt-3 flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              Última varredura: {data ? new Date(data.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+              Última varredura: {data ? formatTime(data.timestamp) : '--:--'}
             </span>
           </div>
 

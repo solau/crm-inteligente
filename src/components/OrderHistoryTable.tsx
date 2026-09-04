@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { ShoppingBag } from 'lucide-react';
+import { formatDate } from '@/lib/utils/dateUtils';
 
 interface BlingOrder {
   id: string;
@@ -60,7 +61,7 @@ export default function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
                     #{compra.numero}
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">
-                    {new Date(compra.data).toLocaleDateString('pt-BR')}
+                    {formatDate(compra.data)}
                   </td>
                   <td className="px-5 py-3 text-right text-rose-400/80">
                     R$ {Number(compra.desconto).toFixed(2).replace('.', ',')}

@@ -2,9 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { Target, BrainCircuit, DollarSign, MessageSquare } from 'lucide-react';
-import RoiAIAnalyzer from './RoiAIAnalyzer'; // Client component
+import RoiAIAnalyzer from './RoiAIAnalyzer';
 import { calculateRoiStats } from '@/lib/utils/roiLogic';
 import MonthFilter from './MonthFilter';
+import { formatMonthYear } from '@/lib/utils/dateUtils';
 
 export const revalidate = 0;
 
@@ -80,7 +81,7 @@ export default async function RoiReportPage({
   tempDate.setDate(1);
   for (let i = 0; i < 12; i++) {
     const v = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
-    const label = tempDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const label = formatMonthYear(tempDate);
     monthOptions.push({ value: v, label: label.charAt(0).toUpperCase() + label.slice(1) });
     tempDate.setMonth(tempDate.getMonth() - 1);
   }

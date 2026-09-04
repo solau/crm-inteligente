@@ -3,6 +3,7 @@ import { Ban, RotateCcw, User, Phone, Calendar, ArrowLeft, ShieldAlert, UserChec
 import Link from 'next/link';
 import ReactivateClientButton from '@/components/ReactivateClientButton';
 import { getSession } from '@/lib/auth';
+import { formatDate, formatDateTime } from '@/lib/utils/dateUtils';
 
 export const revalidate = 0;
 
@@ -145,10 +146,10 @@ export default async function NaoSeAplicaAdminPage() {
                         </span>
                       </td>
                       <td className="py-3.5 text-rose-400 font-medium">
-                        {new Date(c.flaggedAt).toLocaleDateString('pt-BR')} às {new Date(c.flaggedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateTime(c.flaggedAt)}
                       </td>
                       <td className="py-3.5 text-white/60">
-                        {c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString('pt-BR') : 'N/A'}
+                        {c.last_purchase_date ? formatDate(c.last_purchase_date) : 'N/A'}
                       </td>
                       <td className="py-3.5 font-bold text-white/90">{formatMoney(Number(c.total_spent) || 0)}</td>
                       <td className="py-3.5 text-right">
