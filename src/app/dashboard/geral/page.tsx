@@ -11,7 +11,9 @@ import {
   Trophy, 
   Crown,
   TrendingUp,
-  ArrowRight
+  ArrowRight,
+  BarChart3,
+  ShoppingCart
 } from 'lucide-react';
 import Link from 'next/link';
 import { RunJobButton } from '@/components/RunJobButton';
@@ -31,161 +33,199 @@ export default async function AdminDashboardPage() {
   );
   const tenantId = 'd948b6cc-cc2c-4399-8525-02f17f281d38';
 
-  // 1. Busca TODOS os clientes com paginação (superando limite de 1000 linhas)
-  let allClients: any[] = [];
-  let from = 0;
-  let fetching = true;
+  // ─────────────────────────────────────────────────────────────
+  // 1. MÉTRICAS AGREGADAS — sem trazer rows para o JS
+  // ─────────────────────────────────────────────────────────────
 
-  while (fetching) {
+  // Total de compradores reais e soma do LTV — via COUNT+SUM no banco
+  const { data: ltvAgg } = await supabase
+    .from('clients')
+    .select('total_spent')
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gt('total_spent', 0)
+    .csv(); // força retorno compacto, mas usaremos rpc
+
+  // Alternativa: buscar via paginação eficiente (não precisa todos os rows)
+  // Usamos aggregate por RPC — como não temos RPC definido, fazemos em 2 queries leves:
+
+  // a) Compradores reais: count de clientes com total_spent > 0 e phone != dummy
+  const { count: buyersCount } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gt('total_spent', 0);
+
+  // b) LTV total: temos que somar — fazemos em páginas de 1000 (select só coluna numérica)
+  let totalLTV = 0;
+  let ltvFrom = 0;
+  let ltvFetching = true;
+  while (ltvFetching) {
     const { data: rows } = await supabase
       .from('clients')
-      .select('id, created_at, total_spent, lead_score, phone')
-      .range(from, from + 999);
-
-    if (!rows || rows.length === 0) {
-      fetching = false;
-    } else {
-      allClients.push(...rows);
-      from += 1000;
-      if (rows.length < 1000) fetching = false;
-    }
+      .select('total_spent')
+      .eq('tenant_id', tenantId)
+      .neq('phone', '00000000000')
+      .gt('total_spent', 0)
+      .range(ltvFrom, ltvFrom + 999);
+    if (!rows || rows.length === 0) { ltvFetching = false; break; }
+    totalLTV += rows.reduce((s, r) => s + Number(r.total_spent || 0), 0);
+    ltvFrom += 1000;
+    if (rows.length < 1000) ltvFetching = false;
   }
+  const avgLTV = (buyersCount || 0) > 0 ? totalLTV / (buyersCount || 1) : 0;
 
+  // ─────────────────────────────────────────────────────────────
+  // 2. NOVOS COMPRADORES (30 dias): 1ª compra registrada no ledger
+  // ─────────────────────────────────────────────────────────────
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  thirtyDaysAgo.setHours(0, 0, 0, 0);
+  const thirtyStr = thirtyDaysAgo.toISOString();
 
-  // Busca histórico de compras com paginação para determinar a primeira compra real de cada cliente
-  let allLedger: any[] = [];
-  from = 0;
-  fetching = true;
+  // Pega client_ids com compra nos últimos 30d
+  const { data: recentLedger } = await supabase
+    .from('cashback_ledger')
+    .select('client_id')
+    .eq('tenant_id', tenantId)
+    .gte('created_at', thirtyStr);
+  
+  const recentIds = [...new Set((recentLedger || []).map(r => r.client_id).filter(Boolean))];
 
-  while (fetching) {
-    const { data: rows } = await supabase
-      .from('cashback_ledger')
-      .select('client_id, created_at')
-      .eq('tenant_id', tenantId)
-      .range(from, from + 999);
-
-    if (!rows || rows.length === 0) {
-      fetching = false;
-    } else {
-      allLedger.push(...rows);
-      from += 1000;
-      if (rows.length < 1000) fetching = false;
-    }
-  }
-
-  const firstPurchaseMap = new Map<string, string>();
-  for (const row of allLedger) {
-    if (!row.client_id) continue;
-    const currentMin = firstPurchaseMap.get(row.client_id);
-    const time = new Date(row.created_at).getTime();
-
-    if (!currentMin || time < new Date(currentMin).getTime()) {
-      firstPurchaseMap.set(row.client_id, row.created_at);
-    }
-  }
-
-  const realNewClientIds: string[] = [];
-  for (const [clientId, firstDateStr] of firstPurchaseMap.entries()) {
-    if (new Date(firstDateStr).getTime() >= thirtyDaysAgo.getTime()) {
-      realNewClientIds.push(clientId);
-    }
-  }
-
+  // Desses, conta quantos NÃO têm registro mais antigo (= são novos de verdade)
   let newClients30d = 0;
-  if (realNewClientIds.length > 0) {
-    const { count: realNewCount } = await supabase
-      .from('clients')
-      .select('id', { count: 'exact', head: true })
-      .in('id', realNewClientIds)
-      .neq('phone', '00000000000');
-    newClients30d = realNewCount || 0;
+  if (recentIds.length > 0) {
+    const { data: olderEntries } = await supabase
+      .from('cashback_ledger')
+      .select('client_id')
+      .eq('tenant_id', tenantId)
+      .lt('created_at', thirtyStr)
+      .in('client_id', recentIds);
+    
+    const hasOlderPurchase = new Set((olderEntries || []).map(r => r.client_id));
+    newClients30d = recentIds.filter(id => !hasOlderPurchase.has(id)).length;
   }
 
-  let totalLtv = 0;
-  let buyersCount = 0;
-  let totalHealthScore = 0;
-
-  let ninetyDaysAgo = new Date();
+  // ─────────────────────────────────────────────────────────────
+  // 3. SCORE DE SAÚDE: média do lead_score dos compradores ativos (90d)
+  // ─────────────────────────────────────────────────────────────
+  const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  let totalHealthScore = 0;
   let recentBuyersCount = 0;
-
-  for (const c of allClients) {
-    const spent = Number(c.total_spent) || 0;
-    if (spent > 0 && c.phone !== '00000000000') {
-      totalLtv += spent;
-      buyersCount++;
-      if (c.last_purchase_date && new Date(c.last_purchase_date) >= ninetyDaysAgo) {
-        totalHealthScore += Number(c.lead_score || 0);
-        recentBuyersCount++;
-      }
-    }
+  let healthFrom = 0;
+  let healthFetching = true;
+  while (healthFetching) {
+    const { data: rows } = await supabase
+      .from('clients')
+      .select('lead_score, last_purchase_date')
+      .eq('tenant_id', tenantId)
+      .neq('phone', '00000000000')
+      .gt('total_spent', 0)
+      .gte('last_purchase_date', ninetyDaysAgo.toISOString())
+      .range(healthFrom, healthFrom + 999);
+    if (!rows || rows.length === 0) { healthFetching = false; break; }
+    totalHealthScore += rows.reduce((s, r) => s + Number(r.lead_score || 0), 0);
+    recentBuyersCount += rows.length;
+    healthFrom += 1000;
+    if (rows.length < 1000) healthFetching = false;
   }
-
-  const avgLTV = buyersCount > 0 ? totalLtv / buyersCount : 0;
   const avgHealth = recentBuyersCount > 0 ? (totalHealthScore / recentBuyersCount).toFixed(0) : '0';
 
-  // 2. Ranking Top 5 Clientes
+  // ─────────────────────────────────────────────────────────────
+  // 4. HISTÓRICO MENSAL (12 meses) — pedidos e receita real do ledger
+  // ─────────────────────────────────────────────────────────────
+  const now = new Date();
+  const monthlyHistory: { label: string; key: string; orders: number; cashback: number; revenue: number }[] = [];
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = d.toISOString();
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString();
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    const { count: ordersCount } = await supabase
+      .from('cashback_ledger')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('created_at', start)
+      .lt('created_at', end);
+
+    // Busca soma do cashback gerado (original_amount) — cashback = 10% da receita de produtos
+    const { data: cashbackRows } = await supabase
+      .from('cashback_ledger')
+      .select('original_amount')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', start)
+      .lt('created_at', end);
+
+    const totalCashback = (cashbackRows || []).reduce((s, r) => s + Number(r.original_amount || 0), 0);
+    const estimatedRevenue = totalCashback * 10; // cashback = 10% da base
+
+    monthlyHistory.push({
+      key,
+      label: d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', month: 'short', year: '2-digit' }),
+      orders: ordersCount || 0,
+      cashback: totalCashback,
+      revenue: estimatedRevenue,
+    });
+  }
+
+  const maxRevenue = Math.max(...monthlyHistory.map(m => m.revenue), 1);
+
+  // ─────────────────────────────────────────────────────────────
+  // 5. TOP 5 CLIENTES
+  // ─────────────────────────────────────────────────────────────
   const { data: topClients } = await supabase
     .from('clients')
     .select('id, name, phone, total_spent, last_purchase_date')
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
     .order('total_spent', { ascending: false })
     .limit(5);
 
-  // 3. Vendedor do Mês
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  // ─────────────────────────────────────────────────────────────
+  // 6. VENDEDOR DO MÊS
+  // ─────────────────────────────────────────────────────────────
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   
   const { data: interactions } = await supabase
     .from('client_interactions')
-    .select(`
-      id,
-      campaign_type,
-      user_id,
-      user_profiles ( name ),
-      created_at,
-      sales_attribution (
-        id,
-        revenue
-      )
-    `)
+    .select(`id, campaign_type, user_id, user_profiles ( name ), created_at, sales_attribution ( id, revenue )`)
+    .eq('tenant_id', tenantId)
     .gte('created_at', startOfMonth);
 
   let bestSeller = { name: 'Sem vendas', revenue: 0, sales: 0 };
-  
   if (interactions) {
     const { sellerStats } = calculateRoiStats(interactions);
-    // Encontrar o melhor
     for (const [sellerName, stats] of Object.entries(sellerStats)) {
       if ((stats as any).revenue > bestSeller.revenue) {
-        bestSeller = {
-          name: sellerName,
-          revenue: (stats as any).revenue,
-          sales: (stats as any).sales
-        };
+        bestSeller = { name: sellerName, revenue: (stats as any).revenue, sales: (stats as any).sales };
       }
     }
   }
 
-  // 4. Alertas Gerenciais (Descontos abusivos etc) a partir de 01/07/2026
+  // ─────────────────────────────────────────────────────────────
+  // 7. ALERTAS GERENCIAIS
+  // ─────────────────────────────────────────────────────────────
   const { data: alertsRaw } = await supabase
     .from('managerial_alerts')
     .select('id, created_at, order_id, message, resolved, clients(name)')
     .gte('created_at', '2026-07-01T00:00:00Z')
     .order('created_at', { ascending: false });
     
-  // Garantir que alertas não apareçam duplicados na UI
   const uniqueAlertsMap = new Map();
   alertsRaw?.forEach(alert => {
-    if (!uniqueAlertsMap.has(alert.order_id)) {
-      uniqueAlertsMap.set(alert.order_id, alert);
-    }
+    if (!uniqueAlertsMap.has(alert.order_id)) uniqueAlertsMap.set(alert.order_id, alert);
   });
   const alerts = Array.from(uniqueAlertsMap.values());
 
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  const formatK = (val: number) =>
+    val >= 1000 ? `R$ ${(val / 1000).toFixed(0)}k` : `R$ ${val.toFixed(0)}`;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -207,25 +247,25 @@ export default async function AdminDashboardPage() {
               <Wallet className="text-emerald-500 opacity-80" size={20} />
             </div>
             <h2 className="text-3xl font-black text-emerald-500 mt-2">{formatMoney(avgLTV)}</h2>
-            <p className="text-xs text-muted-foreground mt-1">Por cliente pagante</p>
+            <p className="text-xs text-muted-foreground mt-1">{buyersCount?.toLocaleString('pt-BR')} compradores reais</p>
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Novos Clientes</p>
+              <p className="text-sm font-medium text-muted-foreground">Novos Compradores</p>
               <UserPlus className="text-indigo-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{newClients30d || 0}</h2>
-            <p className="text-xs text-muted-foreground mt-1">Últimos 30 dias</p>
+            <h2 className="text-3xl font-bold mt-2">{newClients30d}</h2>
+            <p className="text-xs text-muted-foreground mt-1">1ª compra nos últimos 30 dias</p>
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
             <div className="flex justify-between items-start">
               <p className="text-sm font-medium text-muted-foreground">Compradores Reais</p>
-              <Users className="text-blue-400 opacity-80" size={20} />
+              <ShoppingCart className="text-blue-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{buyersCount || 0}</h2>
-            <p className="text-xs text-muted-foreground mt-1">Base ativa com vendas</p>
+            <h2 className="text-3xl font-bold mt-2">{(buyersCount || 0).toLocaleString('pt-BR')}</h2>
+            <p className="text-xs text-muted-foreground mt-1">Base ativa com total_spent {'>'} 0</p>
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors relative overflow-hidden">
@@ -235,10 +275,67 @@ export default async function AdminDashboardPage() {
             </div>
             <h2 className="text-3xl font-bold mt-2 relative z-10">{avgHealth} <span className="text-sm text-muted-foreground font-normal">/ 100</span></h2>
             <p className="text-xs text-muted-foreground mt-1 relative z-10">Compradores ativos (90d)</p>
-            
-            {/* Background decoration */}
             <div className="absolute -bottom-4 -right-4 text-rose-500/5">
               <Activity size={80} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── HISTÓRICO MENSAL ── */}
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-border flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="text-primary" size={20} />
+              <h3 className="font-semibold text-lg">Histórico de Compras — Últimos 12 Meses</h3>
+            </div>
+            <span className="text-xs text-muted-foreground">Pedidos por mês • receita estimada (cashback × 10)</span>
+          </div>
+          <div className="p-6">
+            {/* Barras */}
+            <div className="flex items-end gap-2 h-40">
+              {monthlyHistory.map((m, idx) => {
+                const pct = maxRevenue > 0 ? (m.revenue / maxRevenue) * 100 : 0;
+                const isCurrentMonth = idx === monthlyHistory.length - 1;
+                return (
+                  <div key={m.key} className="flex-1 flex flex-col items-center gap-1 group relative">
+                    {/* Tooltip */}
+                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-lg px-3 py-2 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-lg">
+                      <p className="font-semibold text-foreground">{m.orders} pedidos</p>
+                      <p className="text-emerald-500">{formatK(m.revenue)}</p>
+                    </div>
+                    {/* Barra */}
+                    <div
+                      className={`w-full rounded-t-sm transition-all ${isCurrentMonth ? 'bg-primary' : 'bg-muted-foreground/30 group-hover:bg-primary/60'}`}
+                      style={{ height: `${Math.max(pct, 2)}%` }}
+                    />
+                    {/* Label */}
+                    <span className={`text-[9px] font-medium ${isCurrentMonth ? 'text-primary' : 'text-muted-foreground'}`}>
+                      {m.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Resumo linha */}
+            <div className="mt-4 pt-4 border-t border-border grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground text-xs">Total pedidos (12m)</p>
+                <p className="font-bold text-foreground">{monthlyHistory.reduce((s, m) => s + m.orders, 0).toLocaleString('pt-BR')}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Receita estimada (12m)</p>
+                <p className="font-bold text-emerald-500">{formatMoney(monthlyHistory.reduce((s, m) => s + m.revenue, 0))}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Mês com mais pedidos</p>
+                <p className="font-bold text-foreground">
+                  {monthlyHistory.reduce((best, m) => m.orders > best.orders ? m : best, monthlyHistory[0])?.label} 
+                  {' '}
+                  <span className="text-muted-foreground font-normal">
+                    ({monthlyHistory.reduce((best, m) => m.orders > best.orders ? m : best, monthlyHistory[0])?.orders} pedidos)
+                  </span>
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -261,7 +358,7 @@ export default async function AdminDashboardPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
-                    <th className="text-left py-3 px-5 font-medium">Posição</th>
+                    <th className="text-left py-3 px-5 font-medium">Pos.</th>
                     <th className="text-left py-3 px-5 font-medium">Cliente</th>
                     <th className="text-left py-3 px-5 font-medium">Última Compra</th>
                     <th className="text-right py-3 px-5 font-medium">Total Gasto (LTV)</th>
@@ -269,7 +366,7 @@ export default async function AdminDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {topClients?.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-muted/10 transition-colors">
+                    <tr key={c.id} className="hover:bg-muted/10 transition-colors">
                       <td className="py-4 px-5">
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-amber-500/20 text-amber-500' : idx === 1 ? 'bg-slate-300/20 text-slate-300' : idx === 2 ? 'bg-orange-700/20 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
                           {idx + 1}
@@ -301,7 +398,6 @@ export default async function AdminDashboardPage() {
 
           {/* Vendedor do Mês */}
           <div className="bg-gradient-to-br from-amber-500/20 to-orange-600/5 border border-amber-500/20 rounded-2xl shadow-sm p-6 relative overflow-hidden flex flex-col items-center text-center">
-            {/* Glow */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-amber-500/20 blur-[50px] rounded-full pointer-events-none"></div>
             
             <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mb-4 relative z-10 border border-amber-500/30">
