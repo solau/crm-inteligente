@@ -77,34 +77,24 @@ export default async function AdminDashboardPage() {
   const avgLTV = (buyersCount || 0) > 0 ? totalLTV / (buyersCount || 1) : 0;
 
   // ─────────────────────────────────────────────────────────────
-  // 2. NOVOS COMPRADORES (30 dias): 1ª compra registrada no ledger
+  // 2. NOVOS COMPRADORES (30 dias)
+  // Definição: cliente cujo registro foi criado nos últimos 30d E já tem compra (total_spent > 0)
+  // Usamos clients.created_at porque cashback_ledger.created_at pode ser contaminado
+  // por reprocessamentos retroativos (inserções manuais com data de "agora").
   // ─────────────────────────────────────────────────────────────
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const thirtyStr = thirtyDaysAgo.toISOString();
 
-  // Pega client_ids com compra nos últimos 30d
-  const { data: recentLedger } = await supabase
-    .from('cashback_ledger')
-    .select('client_id')
+  const { count: newClients30d } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gt('total_spent', 0)
     .gte('created_at', thirtyStr);
-  
-  const recentIds = [...new Set((recentLedger || []).map(r => r.client_id).filter(Boolean))];
 
-  // Desses, conta quantos NÃO têm registro mais antigo (= são novos de verdade)
-  let newClients30d = 0;
-  if (recentIds.length > 0) {
-    const { data: olderEntries } = await supabase
-      .from('cashback_ledger')
-      .select('client_id')
-      .eq('tenant_id', tenantId)
-      .lt('created_at', thirtyStr)
-      .in('client_id', recentIds);
-    
-    const hasOlderPurchase = new Set((olderEntries || []).map(r => r.client_id));
-    newClients30d = recentIds.filter(id => !hasOlderPurchase.has(id)).length;
-  }
+
 
   // ─────────────────────────────────────────────────────────────
   // 3. SCORE DE SAÚDE: média do lead_score dos compradores ativos (90d)
@@ -291,25 +281,35 @@ export default async function AdminDashboardPage() {
             <span className="text-xs text-muted-foreground">Pedidos por mês • receita estimada (cashback × 10)</span>
           </div>
           <div className="p-6">
-            {/* Barras */}
-            <div className="flex items-end gap-2 h-40">
+            {/* Barras — altura em px para funcionar dentro de flex */}
+            <div className="flex items-end gap-1.5" style={{ height: '120px' }}>
               {monthlyHistory.map((m, idx) => {
-                const pct = maxRevenue > 0 ? (m.revenue / maxRevenue) * 100 : 0;
+                const BAR_MAX_PX = 108; // reserva 12px para o gap
+                const barPx = maxRevenue > 0 ? Math.max(Math.round((m.revenue / maxRevenue) * BAR_MAX_PX), 4) : 4;
                 const isCurrentMonth = idx === monthlyHistory.length - 1;
                 return (
-                  <div key={m.key} className="flex-1 flex flex-col items-center gap-1 group relative">
-                    {/* Tooltip */}
-                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-lg px-3 py-2 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-lg">
+                  <div key={m.key} className="flex-1 relative group flex flex-col justify-end" style={{ height: '100%' }}>
+                    {/* Tooltip — aparece acima da barra */}
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-lg px-2.5 py-2 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-lg">
                       <p className="font-semibold text-foreground">{m.orders} pedidos</p>
                       <p className="text-emerald-500">{formatK(m.revenue)}</p>
                     </div>
                     {/* Barra */}
                     <div
-                      className={`w-full rounded-t-sm transition-all ${isCurrentMonth ? 'bg-primary' : 'bg-muted-foreground/30 group-hover:bg-primary/60'}`}
-                      style={{ height: `${Math.max(pct, 2)}%` }}
+                      className={`w-full rounded-t-sm transition-colors ${isCurrentMonth ? 'bg-primary' : 'bg-muted-foreground/20 group-hover:bg-primary/50'}`}
+                      style={{ height: `${barPx}px` }}
                     />
-                    {/* Label */}
-                    <span className={`text-[9px] font-medium ${isCurrentMonth ? 'text-primary' : 'text-muted-foreground'}`}>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Labels abaixo das barras */}
+            <div className="flex gap-1.5 mt-1">
+              {monthlyHistory.map((m, idx) => {
+                const isCurrentMonth = idx === monthlyHistory.length - 1;
+                return (
+                  <div key={m.key} className="flex-1 text-center">
+                    <span className={`text-[9px] font-medium block truncate ${isCurrentMonth ? 'text-primary' : 'text-muted-foreground'}`}>
                       {m.label}
                     </span>
                   </div>
