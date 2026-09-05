@@ -13,7 +13,6 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRight,
-  BarChart3,
   ShoppingCart
 } from 'lucide-react';
 import Link from 'next/link';
@@ -151,49 +150,9 @@ export default async function AdminDashboardPage() {
   }
   const avgHealth = recentBuyersCount > 0 ? (totalHealthScore / recentBuyersCount).toFixed(0) : '0';
 
-  // ─────────────────────────────────────────────────────────────
-  // 4. HISTÓRICO MENSAL (12 meses) — pedidos e receita real do ledger
-  // ─────────────────────────────────────────────────────────────
-  const now = new Date();
-  const monthlyHistory: { label: string; key: string; orders: number; cashback: number; revenue: number }[] = [];
-
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const start = d.toISOString();
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString();
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-    const { count: ordersCount } = await supabase
-      .from('cashback_ledger')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .gte('created_at', start)
-      .lt('created_at', end);
-
-    // Busca soma do cashback gerado (original_amount) — cashback = 10% da receita de produtos
-    const { data: cashbackRows } = await supabase
-      .from('cashback_ledger')
-      .select('original_amount')
-      .eq('tenant_id', tenantId)
-      .gte('created_at', start)
-      .lt('created_at', end);
-
-    const totalCashback = (cashbackRows || []).reduce((s, r) => s + Number(r.original_amount || 0), 0);
-    const estimatedRevenue = totalCashback * 10; // cashback = 10% da base
-
-    monthlyHistory.push({
-      key,
-      label: d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', month: 'short', year: '2-digit' }),
-      orders: ordersCount || 0,
-      cashback: totalCashback,
-      revenue: estimatedRevenue,
-    });
-  }
-
-  const maxRevenue = Math.max(...monthlyHistory.map(m => m.revenue), 1);
 
   // ─────────────────────────────────────────────────────────────
-  // 5. TOP 5 CLIENTES
+  // 4. TOP 5 CLIENTES
   // ─────────────────────────────────────────────────────────────
   const { data: topClients } = await supabase
     .from('clients')
@@ -206,7 +165,7 @@ export default async function AdminDashboardPage() {
   // ─────────────────────────────────────────────────────────────
   // 6. VENDEDOR DO MÊS
   // ─────────────────────────────────────────────────────────────
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const startOfMonth = new Date(now30.getFullYear(), now30.getMonth(), 1).toISOString();
   
   const { data: interactions } = await supabase
     .from('client_interactions')
@@ -325,75 +284,6 @@ export default async function AdminDashboardPage() {
             <p className="text-xs text-muted-foreground mt-1 relative z-10">Compradores ativos (90d)</p>
             <div className="absolute -bottom-4 -right-4 text-rose-500/5">
               <Activity size={80} />
-            </div>
-          </div>
-        </div>
-
-        {/* ── HISTÓRICO MENSAL ── */}
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-border flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="text-primary" size={20} />
-              <h3 className="font-semibold text-lg">Histórico de Compras — Últimos 12 Meses</h3>
-            </div>
-            <span className="text-xs text-muted-foreground">Pedidos por mês • receita estimada (cashback × 10)</span>
-          </div>
-          <div className="p-6">
-            {/* Barras — altura em px para funcionar dentro de flex */}
-            <div className="flex items-end gap-1.5" style={{ height: '120px' }}>
-              {monthlyHistory.map((m, idx) => {
-                const BAR_MAX_PX = 108; // reserva 12px para o gap
-                const barPx = maxRevenue > 0 ? Math.max(Math.round((m.revenue / maxRevenue) * BAR_MAX_PX), 4) : 4;
-                const isCurrentMonth = idx === monthlyHistory.length - 1;
-                return (
-                  <div key={m.key} className="flex-1 relative group flex flex-col justify-end" style={{ height: '100%' }}>
-                    {/* Tooltip — aparece acima da barra */}
-                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-lg px-2.5 py-2 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-lg">
-                      <p className="font-semibold text-foreground">{m.orders} pedidos</p>
-                      <p className="text-emerald-500">{formatK(m.revenue)}</p>
-                    </div>
-                    {/* Barra */}
-                    <div
-                      className={`w-full rounded-t-sm transition-colors ${isCurrentMonth ? 'bg-primary' : 'bg-muted-foreground/20 group-hover:bg-primary/50'}`}
-                      style={{ height: `${barPx}px` }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            {/* Labels abaixo das barras */}
-            <div className="flex gap-1.5 mt-1">
-              {monthlyHistory.map((m, idx) => {
-                const isCurrentMonth = idx === monthlyHistory.length - 1;
-                return (
-                  <div key={m.key} className="flex-1 text-center">
-                    <span className={`text-[9px] font-medium block truncate ${isCurrentMonth ? 'text-primary' : 'text-muted-foreground'}`}>
-                      {m.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Resumo linha */}
-            <div className="mt-4 pt-4 border-t border-border grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground text-xs">Total pedidos (12m)</p>
-                <p className="font-bold text-foreground">{monthlyHistory.reduce((s, m) => s + m.orders, 0).toLocaleString('pt-BR')}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Receita estimada (12m)</p>
-                <p className="font-bold text-emerald-500">{formatMoney(monthlyHistory.reduce((s, m) => s + m.revenue, 0))}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Mês com mais pedidos</p>
-                <p className="font-bold text-foreground">
-                  {monthlyHistory.reduce((best, m) => m.orders > best.orders ? m : best, monthlyHistory[0])?.label} 
-                  {' '}
-                  <span className="text-muted-foreground font-normal">
-                    ({monthlyHistory.reduce((best, m) => m.orders > best.orders ? m : best, monthlyHistory[0])?.orders} pedidos)
-                  </span>
-                </p>
-              </div>
             </div>
           </div>
         </div>
