@@ -11,6 +11,7 @@ import {
   Trophy, 
   Crown,
   TrendingUp,
+  TrendingDown,
   ArrowRight,
   BarChart3,
   ShoppingCart
@@ -77,15 +78,16 @@ export default async function AdminDashboardPage() {
   const avgLTV = (buyersCount || 0) > 0 ? totalLTV / (buyersCount || 1) : 0;
 
   // ─────────────────────────────────────────────────────────────
-  // 2. NOVOS COMPRADORES (30 dias)
-  // Definição: cliente cujo registro foi criado nos últimos 30d E já tem compra (total_spent > 0)
-  // Usamos clients.created_at porque cashback_ledger.created_at pode ser contaminado
-  // por reprocessamentos retroativos (inserções manuais com data de "agora").
+  // 2. NOVOS COMPRADORES + COMPRADORES ATIVOS — 30d vs 30d anterior
+  // Usamos clients.created_at (não contaminado por reprocessamentos)
   // ─────────────────────────────────────────────────────────────
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const now30 = new Date();
+  const thirtyDaysAgo = new Date(now30.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo  = new Date(now30.getTime() - 60 * 24 * 60 * 60 * 1000);
   const thirtyStr = thirtyDaysAgo.toISOString();
+  const sixtyStr  = sixtyDaysAgo.toISOString();
 
+  // Novos compradores — últimos 30d (cliente criado no período + já comprou)
   const { count: newClients30d } = await supabase
     .from('clients')
     .select('id', { count: 'exact', head: true })
@@ -94,6 +96,32 @@ export default async function AdminDashboardPage() {
     .gt('total_spent', 0)
     .gte('created_at', thirtyStr);
 
+  // Novos compradores — 30d anteriores (60d atrás até 30d atrás)
+  const { count: newClientsPrev30d } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gt('total_spent', 0)
+    .gte('created_at', sixtyStr)
+    .lt('created_at', thirtyStr);
+
+  // Compradores ativos — clientes com last_purchase_date nos últimos 30d
+  const { count: activeBuyers30d } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gte('last_purchase_date', thirtyStr);
+
+  // Compradores ativos — 30d anteriores
+  const { count: activeBuyersPrev30d } = await supabase
+    .from('clients')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .neq('phone', '00000000000')
+    .gte('last_purchase_date', sixtyStr)
+    .lt('last_purchase_date', thirtyStr);
 
 
   // ─────────────────────────────────────────────────────────────
@@ -245,17 +273,47 @@ export default async function AdminDashboardPage() {
               <p className="text-sm font-medium text-muted-foreground">Novos Compradores</p>
               <UserPlus className="text-indigo-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{newClients30d}</h2>
+            <h2 className="text-3xl font-bold mt-2">{newClients30d ?? 0}</h2>
             <p className="text-xs text-muted-foreground mt-1">1ª compra nos últimos 30 dias</p>
+            {(() => {
+              const curr = newClients30d ?? 0;
+              const prev = newClientsPrev30d ?? 0;
+              if (prev === 0) return <p className="text-xs text-muted-foreground mt-1">sem período anterior</p>;
+              const delta = curr - prev;
+              const pct = Math.abs(Math.round((delta / prev) * 100));
+              const up = delta >= 0;
+              return (
+                <div className={`flex items-center gap-1 mt-2 text-xs font-semibold ${up ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                  <span>{up ? '+' : '-'}{pct}% vs. 30d anteriores</span>
+                  <span className="text-muted-foreground font-normal ml-1">({prev} antes)</span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
             <div className="flex justify-between items-start">
-              <p className="text-sm font-medium text-muted-foreground">Compradores Reais</p>
+              <p className="text-sm font-medium text-muted-foreground">Compradores Ativos 30d</p>
               <ShoppingCart className="text-blue-400 opacity-80" size={20} />
             </div>
-            <h2 className="text-3xl font-bold mt-2">{(buyersCount || 0).toLocaleString('pt-BR')}</h2>
-            <p className="text-xs text-muted-foreground mt-1">Base ativa com total_spent {'>'} 0</p>
+            <h2 className="text-3xl font-bold mt-2">{(activeBuyers30d ?? 0).toLocaleString('pt-BR')}</h2>
+            <p className="text-xs text-muted-foreground mt-1">Com compra nos últimos 30 dias</p>
+            {(() => {
+              const curr = activeBuyers30d ?? 0;
+              const prev = activeBuyersPrev30d ?? 0;
+              if (prev === 0) return <p className="text-xs text-muted-foreground mt-1">sem período anterior</p>;
+              const delta = curr - prev;
+              const pct = Math.abs(Math.round((delta / prev) * 100));
+              const up = delta >= 0;
+              return (
+                <div className={`flex items-center gap-1 mt-2 text-xs font-semibold ${up ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                  <span>{up ? '+' : '-'}{pct}% vs. 30d anteriores</span>
+                  <span className="text-muted-foreground font-normal ml-1">({prev} antes)</span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm hover:border-primary/50 transition-colors relative overflow-hidden">
