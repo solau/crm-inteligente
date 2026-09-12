@@ -12,6 +12,7 @@ const USERS = [
 
 export async function POST(request: Request) {
   try {
+    const { username, password } = await request.json();
     const cleanUsername = (username || '').trim().toLowerCase();
     const cleanPassword = (password || '').trim();
 
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, user: { name: user.name, role: user.role } });
   } catch (error) {
+    console.error('ERRO NO LOGIN:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
