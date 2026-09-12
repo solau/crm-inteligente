@@ -11,6 +11,7 @@ export async function GET() {
     { email: 'harley@alphabull.com', password: 'password123', name: 'Harley', username: 'Harley' },
     { email: 'alane@alphabull.com', password: 'password123', name: 'Alane', username: 'Alane' },
     { email: 'ycla@alphabull.com', password: 'password123', name: 'Ycla', username: 'Ycla' },
+    { email: 'cassiane@alphabull.com', password: 'Cassiane', name: 'Cassiane', username: 'Cassiane' },
     { email: 'jorge@alphabull.com', password: 'password123', name: 'Jorge', username: 'Jorge', role: 'admin' }
   ];
 

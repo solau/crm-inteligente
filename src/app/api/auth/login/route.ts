@@ -7,14 +7,16 @@ const USERS = [
   { id: 'vend-1', username: 'Alane', password: 'Alane', role: 'VENDEDOR', name: 'Alane' },
   { id: 'vend-2', username: 'Harley', password: 'Harley', role: 'VENDEDOR', name: 'Harley' },
   { id: 'vend-3', username: 'Ycla', password: 'Ycla', role: 'VENDEDOR', name: 'Ycla' },
+  { id: 'vend-4', username: 'Cassiane', password: 'Cassiane', role: 'VENDEDOR', name: 'Cassiane' },
 ];
 
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json();
+    const cleanUsername = (username || '').trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
 
     const user = USERS.find(
-      (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+      (u) => u.username.toLowerCase() === cleanUsername && (u.password === cleanPassword || u.password.toLowerCase() === cleanPassword.toLowerCase())
     );
 
     if (!user) {

@@ -51,6 +51,7 @@ export default async function NaoSeAplicaAdminPage() {
   profileMap.set('vend-1', 'Alane');
   profileMap.set('vend-2', 'Harley');
   profileMap.set('vend-3', 'Ycla');
+  profileMap.set('vend-4', 'Cassiane');
 
   let ignoredClients: any[] = [];
   if (ignoredClientIds.length > 0) {
