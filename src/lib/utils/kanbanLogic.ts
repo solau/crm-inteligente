@@ -13,6 +13,7 @@ export interface ClientInteractions {
 
 export interface KanbanColumns {
   colEventos: KanbanClient[];
+  colKits: KanbanClient[];
   colCorridaAlphaville: KanbanClient[];
   colBpe25: KanbanClient[];
   colLeadsWhatsapp: KanbanClient[];
@@ -62,6 +63,7 @@ export function getKanbanColumns(
   };
 
   const colEventos: KanbanClient[] = [];
+  const colKits: KanbanClient[] = [];
   const colCorridaAlphaville: KanbanClient[] = [];
   const colBpe25: KanbanClient[] = [];
   const colLeadsWhatsapp: KanbanClient[] = [];
@@ -147,10 +149,24 @@ export function getKanbanColumns(
       c.preferences.toLowerCase().includes('evento') ||
       (c.preferences.toLowerCase().includes('bpe26') && !c.preferences.toLowerCase().includes('kit'))
     );
-    const isEvent = Boolean(c.is_event_opportunity) || Boolean(hasEventPref);
+    const isEvent = (Boolean(c.is_event_opportunity) || Boolean(hasEventPref)) && c.category !== 'KIT' && !c.is_kit_opportunity;
 
     if (isEvent) {
       colEventos.push(c);
+      continue;
+    }
+
+    // Prioridade 0.05: Oportunidades de Kits Churrasco (BPE26)
+    const hasKitPref = c.preferences && typeof c.preferences === 'string' && (
+      c.preferences.toLowerCase().includes('kit') && (
+        c.preferences.toLowerCase().includes('bpe26') || 
+        c.preferences.toLowerCase().includes('churrasco')
+      )
+    );
+    const isKit = Boolean(c.is_kit_opportunity) || c.category === 'KIT' || (Boolean(hasKitPref) && !isEvent);
+
+    if (isKit) {
+      colKits.push(c);
       continue;
     }
 
@@ -310,6 +326,7 @@ export function getKanbanColumns(
 
   // Ordenações
   colEventos.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
+  colKits.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
   colCorridaAlphaville.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colBpe25.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colLeadsWhatsapp.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -330,6 +347,7 @@ export function getKanbanColumns(
 
   return {
     colEventos,
+    colKits,
     colCorridaAlphaville,
     colBpe25,
     colLeadsWhatsapp,

@@ -5,6 +5,8 @@ import { ClientRepository } from './ClientRepository';
 import { CampaignRepository } from './CampaignRepository';
 
 export interface CreateEventLeadInput {
+  client_id?: string;
+  stage?: EventStage;
   // Dados do contato
   company_name: string;
   contact_name: string;
@@ -297,15 +299,37 @@ export class EventOpportunityRepository {
       assigned_to?: string | null;
     }
   ): Promise<EventOpportunity> {
-    const { data: currentOpp, error: getErr } = await supabaseAdmin
+    let { data: currentOpp, error: getErr } = await supabaseAdmin
       .from('event_opportunities')
       .select('*')
-      .eq('id', opportunityId)
+      .or(`id.eq.${opportunityId},client_id.eq.${opportunityId}`)
       .eq('tenant_id', this.tenantId)
-      .single();
+      .maybeSingle();
 
-    if (getErr || !currentOpp) {
-      throw new Error(`Oportunidade não encontrada: ${getErr?.message}`);
+    if (!currentOpp) {
+      const { data: client } = await supabaseAdmin
+        .from('clients')
+        .select('*')
+        .eq('id', opportunityId)
+        .eq('tenant_id', this.tenantId)
+        .maybeSingle();
+
+      if (client) {
+        const isKit = client.preferences?.toLowerCase().includes('kit');
+        const created = await this.createOrUpdateEventOpportunity({
+          client_id: client.id,
+          company_name: client.company_name || (client.name?.includes('(') ? client.name.match(/\(([^)]+)\)/)?.[1] : client.name),
+          contact_name: client.contact_name || client.name,
+          contact_phone: client.phone,
+          stage: newStage,
+          notes: notes || undefined,
+          category: isKit ? 'KIT' : 'EVENTO',
+          campaign_code: 'BPE26'
+        });
+        currentOpp = created.opportunity;
+      } else {
+        throw new Error(`Oportunidade não encontrada: ${getErr?.message || 'ID inexistente'}`);
+      }
     }
 
     const previousStage = currentOpp.stage;
@@ -322,7 +346,7 @@ export class EventOpportunityRepository {
     const { data: updated, error: updErr } = await supabaseAdmin
       .from('event_opportunities')
       .update(updates)
-      .eq('id', opportunityId)
+      .eq('id', currentOpp.id)
       .select('*')
       .single();
 
@@ -331,7 +355,7 @@ export class EventOpportunityRepository {
     }
 
     // Registra histórico de mudança de etapa
-    await this.recordStageHistory(opportunityId, previousStage, newStage, userId, notes);
+    await this.recordStageHistory(currentOpp.id, previousStage, newStage, userId, notes);
 
     return updated as EventOpportunity;
   }
