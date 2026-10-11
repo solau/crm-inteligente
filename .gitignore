@@ -25,6 +25,8 @@
 *.pem
 order_*.json
 scratch/
+*.csv
+supabase/.temp/
 
 # debug
 npm-debug.log*
