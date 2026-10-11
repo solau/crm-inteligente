@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShoppingBag, X, CheckCircle2, RefreshCw } from 'lucide-react';
+import { todayBRT } from '@/lib/utils/dateUtils';
 
 interface RegisterManualSaleModalProps {
   clientId: string;
@@ -14,7 +15,7 @@ export default function RegisterManualSaleModal({ clientId, clientName }: Regist
   const [isOpen, setIsOpen] = useState(false);
   const [totalValue, setTotalValue] = useState('');
   const [orderId, setOrderId] = useState('');
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [orderDate, setOrderDate] = useState(todayBRT());
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 

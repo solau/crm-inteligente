@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target, Bot, Sparkles, Ban } from 'lucide-react';
+import { LayoutDashboard, Users, MessageCircle, BarChart3, Settings, LogOut, Target, Bot, Sparkles, Ban, Megaphone } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 
 export default async function Sidebar() {
@@ -43,7 +43,7 @@ export default async function Sidebar() {
             </>
           )}
 
-          {/* 3 Telas Principais do Vendedor (e também visíveis ao Admin) */}
+          {/* Telas Principais */}
           <Link href="/clientes" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <Users size={20} className="text-muted-foreground" />
             <span>Clientes (Radar)</span>
@@ -52,6 +52,11 @@ export default async function Sidebar() {
           <Link href="/vendedor/kanban" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
             <Target size={20} className="text-muted-foreground" />
             <span>Kanban de Vendas</span>
+          </Link>
+
+          <Link href="/campanhas" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
+            <Megaphone size={20} className="text-amber-400" />
+            <span>Campanhas (BPE26)</span>
           </Link>
 
           <Link href="/vendedor/desempenho" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium">
@@ -110,6 +115,10 @@ export default async function Sidebar() {
         <Link href="/vendedor/kanban" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
           <Target size={20} />
           <span className="text-[10px] font-medium">Kanban</span>
+        </Link>
+        <Link href="/campanhas" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-amber-400 transition-colors p-2">
+          <Megaphone size={20} className="text-amber-400" />
+          <span className="text-[10px] font-medium">Campanhas</span>
         </Link>
         <Link href="/vendedor/desempenho" className="flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-colors p-2">
           <BarChart3 size={20} className="text-violet-400" />

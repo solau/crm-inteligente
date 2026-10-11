@@ -3,6 +3,7 @@ import { KanbanBoard } from '@/components/KanbanBoard';
 import SyncKanbanButton from '@/components/SyncKanbanButton';
 import HourlyGoalMonitor from '@/components/HourlyGoalMonitor';
 import { getSession } from '@/lib/auth';
+import { startOfTodayUTC } from '@/lib/utils/dateUtils';
 
 function isSamePhone(p1: string | null | undefined, p2: string | null | undefined): boolean {
   if (!p1 || !p2) return false;
@@ -109,6 +110,64 @@ export default async function KanbanPage() {
     }
   }
 
+  // Busca oportunidades de eventos e confraternizações corporativas para a coluna EVENTOS
+  try {
+    const { data: eventOpps } = await supabase
+      .from('event_opportunities')
+      .select('*, user_profiles:assigned_to(name)')
+      .order('created_at', { ascending: false });
+
+    if (eventOpps && eventOpps.length > 0) {
+      for (const opp of eventOpps) {
+        const existingIdx = clients.findIndex(c => c.id === opp.client_id || isSamePhone(c.phone, opp.contact_phone));
+        if (existingIdx !== -1) {
+          clients[existingIdx].is_event_opportunity = true;
+          clients[existingIdx].event_opportunity_id = opp.id;
+          clients[existingIdx].company_name = opp.company_name;
+          clients[existingIdx].expected_guests = opp.expected_guests;
+          clients[existingIdx].event_date = opp.event_date;
+          clients[existingIdx].estimated_value = opp.estimated_value;
+          clients[existingIdx].stage = opp.stage;
+          clients[existingIdx].priority = opp.priority;
+          clients[existingIdx].assigned_to_name = opp.user_profiles?.name || null;
+          clients[existingIdx].origin_channel = opp.origin_channel;
+          clients[existingIdx].origin_site = opp.origin_site;
+          clients[existingIdx].notes = opp.notes;
+        } else {
+          clients.push({
+            id: opp.client_id || opp.id,
+            tenant_id: opp.tenant_id,
+            name: opp.contact_name,
+            phone: opp.contact_phone,
+            lead_score: opp.priority === 'ALTA' ? 95 : opp.priority === 'MEDIA' ? 75 : 40,
+            cashback_balance: 0,
+            has_active: false,
+            has_expired: false,
+            total_spent: 0,
+            last_purchase_date: null,
+            next_expire_date: null,
+            total_expired_amount: 0,
+            is_event_opportunity: true,
+            event_opportunity_id: opp.id,
+            company_name: opp.company_name,
+            expected_guests: opp.expected_guests,
+            event_date: opp.event_date,
+            estimated_value: opp.estimated_value,
+            stage: opp.stage,
+            priority: opp.priority,
+            assigned_to_name: opp.user_profiles?.name || null,
+            origin_channel: opp.origin_channel,
+            origin_site: opp.origin_site,
+            notes: opp.notes,
+            preferences: `BPE26 - Eventos Corporativos | ${opp.company_name}`
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Busca de oportunidades de eventos no Kanban:', e);
+  }
+
   // The error handling is inside the loop
 
   // Busca interações dos últimos 30 dias para lógica de Cooldown e Pós-Venda
@@ -168,7 +227,7 @@ export default async function KanbanPage() {
     // Obter todas as interações dos últimos 30 dias (Equipe toda)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const todayStr = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z';
+    const todayStr = startOfTodayUTC();
     
     const { data: allInteractions } = await supabase
       .from('client_interactions')

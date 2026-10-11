@@ -12,6 +12,7 @@ export interface ClientInteractions {
 }
 
 export interface KanbanColumns {
+  colEventos: KanbanClient[];
   colCorridaAlphaville: KanbanClient[];
   colBpe25: KanbanClient[];
   colLeadsWhatsapp: KanbanClient[];
@@ -60,6 +61,7 @@ export function getKanbanColumns(
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  const colEventos: KanbanClient[] = [];
   const colCorridaAlphaville: KanbanClient[] = [];
   const colBpe25: KanbanClient[] = [];
   const colLeadsWhatsapp: KanbanClient[] = [];
@@ -139,6 +141,19 @@ export function getKanbanColumns(
     // Identifica se o cliente já realizou qualquer compra na loja
     const hasPurchased = (c.last_purchase_date !== null && c.last_purchase_date !== undefined) || (Number(c.total_spent) > 0);
 
+    // Prioridade 0.0: Oportunidades de Eventos Corporativos e Confraternizações (BPE26)
+    const hasEventPref = c.preferences && typeof c.preferences === 'string' && (
+      c.preferences.toLowerCase().includes('confraterniza') ||
+      c.preferences.toLowerCase().includes('evento') ||
+      (c.preferences.toLowerCase().includes('bpe26') && !c.preferences.toLowerCase().includes('kit'))
+    );
+    const isEvent = Boolean(c.is_event_opportunity) || Boolean(hasEventPref);
+
+    if (isEvent) {
+      colEventos.push(c);
+      continue;
+    }
+
     // Prioridade 0: Corrida Alphaville (Apenas Prospectos que NUNCA compraram)
     const isCorrida = c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('corrida alphaville');
     if (isCorrida && !hasPurchased) {
@@ -160,8 +175,12 @@ export function getKanbanColumns(
       continue;
     }
 
-    // Prioridade 0.1: Leads BPE25 (Apenas Prospectos que NUNCA compraram)
-    const isBpe25 = c.preferences && typeof c.preferences === 'string' && (c.preferences.toLowerCase().includes('bpe25') || c.preferences.toLowerCase().includes('bpe'));
+    // Prioridade 0.1: Leads BPE (Apenas Prospectos que NUNCA compraram)
+    const isBpe25 = c.preferences && typeof c.preferences === 'string' && (
+      c.preferences.toLowerCase().includes('bpe25') || 
+      c.preferences.toLowerCase().includes('bpe26') || 
+      c.preferences.toLowerCase().includes('bpe')
+    );
     if (isBpe25 && !hasPurchased) {
       let isBlockedBpe25 = false;
       if (lastInt) {
@@ -290,6 +309,7 @@ export function getKanbanColumns(
   }
 
   // Ordenações
+  colEventos.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
   colCorridaAlphaville.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colBpe25.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   colLeadsWhatsapp.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -309,6 +329,7 @@ export function getKanbanColumns(
   const col90dLimited = col90d.slice(0, MAX_ABSENT);
 
   return {
+    colEventos,
     colCorridaAlphaville,
     colBpe25,
     colLeadsWhatsapp,
