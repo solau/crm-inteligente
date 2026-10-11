@@ -46,6 +46,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const updated = await repo.updateStage(id, body.stage, userId, body.notes, {
         loss_reason: body.loss_reason,
         contracted_value: body.contracted_value,
+        estimated_value: body.estimated_value,
         next_contact_date: body.next_contact_date,
         assigned_to: body.assigned_to
       });

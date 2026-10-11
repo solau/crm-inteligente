@@ -141,15 +141,7 @@ export class EventOpportunityRepository {
       clientId = newClient.id!;
     }
 
-    // SE A CATEGORIA FOR KIT: Reutiliza fluxo de produto e NÃO cria oportunidade de evento
-    if (category === 'KIT') {
-      return {
-        opportunity: null,
-        clientId,
-        category: 'KIT',
-        isDuplicate: Boolean(existingClient)
-      };
-    }
+    // Se for KIT ou EVENTO, segue para criação/atualização da oportunidade correspondente
 
     // 3. SE A CATEGORIA FOR EVENTO: Mecanismo de Idempotência e criação de oportunidade de evento
     let existingOpp: any = null;
@@ -183,7 +175,7 @@ export class EventOpportunityRepository {
         contact_name: input.contact_name || existingOpp.contact_name,
         contact_email: input.contact_email || existingOpp.contact_email,
         contact_role: input.contact_role || existingOpp.contact_role,
-        category: 'EVENTO',
+        category: category,
         guests_range: input.guests_range || existingOpp.guests_range,
         expected_guests: input.expected_guests ?? existingOpp.expected_guests,
         instagram: input.instagram || existingOpp.instagram,
@@ -208,13 +200,13 @@ export class EventOpportunityRepository {
           .single();
 
         if (!updErr && updated) {
-          return { opportunity: updated as EventOpportunity, clientId, category: 'EVENTO', isDuplicate: true };
+          return { opportunity: updated as EventOpportunity, clientId, category, isDuplicate: true };
         }
       } catch (e) {
         // Fallback
       }
 
-      return { opportunity: { ...existingOpp, ...updates } as EventOpportunity, clientId, category: 'EVENTO', isDuplicate: true };
+      return { opportunity: { ...existingOpp, ...updates } as EventOpportunity, clientId, category, isDuplicate: true };
     }
 
     // 5. Inserção de Nova Oportunidade de Evento
@@ -229,7 +221,7 @@ export class EventOpportunityRepository {
       contact_role: input.contact_role || null,
       segment: input.segment || null,
       city: input.city || null,
-      category: 'EVENTO',
+      category: category,
       guests_range: input.guests_range || null,
       instagram: input.instagram || null,
       birth_date: input.birth_date || null,
@@ -239,8 +231,8 @@ export class EventOpportunityRepository {
       event_date: input.event_date || null,
       is_exact_date: Boolean(input.is_exact_date),
       location: input.location || null,
-      event_type: input.event_type || 'confraternizacao_empresarial',
-      notes: input.notes || (input.guests_range ? `Faixa de convidados: ${input.guests_range}` : null),
+      event_type: input.event_type || (category === 'KIT' ? 'kit_churrasco' : 'confraternizacao_empresarial'),
+      notes: input.notes || (input.guests_range ? `Faixa de participantes: ${input.guests_range}` : null),
       estimated_value: input.estimated_value || 0,
       contracted_value: 0,
       origin_channel: input.origin_channel || 'QR Code',
@@ -266,8 +258,8 @@ export class EventOpportunityRepository {
 
       if (!insErr && inserted) {
         // Registra histórico inicial de etapa
-        await this.recordStageHistory(inserted.id, null, 'novo_lead', null, 'Lead captado via formulário BPE26');
-        return { opportunity: inserted as EventOpportunity, clientId, category: 'EVENTO', isDuplicate: false };
+        await this.recordStageHistory(inserted.id, null, 'novo_lead', null, `Lead captado via formulário BPE26 (${category})`);
+        return { opportunity: inserted as EventOpportunity, clientId, category, isDuplicate: false };
       }
     } catch (e: any) {
       console.warn('Tabela event_opportunities ainda não criada no Supabase:', e.message);
@@ -281,7 +273,7 @@ export class EventOpportunityRepository {
       updated_at: new Date().toISOString()
     } as EventOpportunity;
 
-    return { opportunity: fallbackOpp, clientId, category: 'EVENTO', isDuplicate: false };
+    return { opportunity: fallbackOpp, clientId, category, isDuplicate: false };
   }
 
   /**
@@ -295,6 +287,7 @@ export class EventOpportunityRepository {
     extraUpdates?: {
       loss_reason?: string | null;
       contracted_value?: number;
+      estimated_value?: number;
       next_contact_date?: string | null;
       assigned_to?: string | null;
     }
@@ -387,15 +380,19 @@ export class EventOpportunityRepository {
   }
 
   /**
-   * Lista oportunidades de eventos com filtros
+   * Lista oportunidades de kits e eventos com filtros
    */
   async listOpportunities(filters?: {
     stage?: EventStage;
     priority?: LeadPriority;
     campaignId?: string;
     search?: string;
+    category?: 'KIT' | 'EVENTO' | 'all';
   }): Promise<EventOpportunity[]> {
     try {
+      // Reconcilia leads existentes da campanha BPE26
+      await this.reconcileExistingBpe26Leads();
+
       let query = supabaseAdmin
         .from('event_opportunities')
         .select(`
@@ -406,6 +403,9 @@ export class EventOpportunityRepository {
         .eq('tenant_id', this.tenantId)
         .order('created_at', { ascending: false });
 
+      if (filters?.category && filters.category !== 'all') {
+        query = query.eq('category', filters.category);
+      }
       if (filters?.stage) {
         query = query.eq('stage', filters.stage);
       }
@@ -426,6 +426,68 @@ export class EventOpportunityRepository {
       })) as EventOpportunity[];
     } catch (e) {
       return [];
+    }
+  }
+
+  /**
+   * Reconcilia leads de Kits e Eventos existentes em clients que não possuam opportunity_id
+   */
+  async reconcileExistingBpe26Leads(): Promise<void> {
+    try {
+      const { data: bpeClients } = await supabaseAdmin
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', this.tenantId)
+        .ilike('preferences', '%BPE26%');
+
+      if (!bpeClients || bpeClients.length === 0) return;
+
+      const { data: existingOpps } = await supabaseAdmin
+        .from('event_opportunities')
+        .select('client_id')
+        .eq('tenant_id', this.tenantId);
+
+      const existingSet = new Set((existingOpps || []).map((o: any) => o.client_id));
+
+      for (const c of bpeClients) {
+        if (!existingSet.has(c.id)) {
+          const isKit = (c.preferences || '').toLowerCase().includes('kit');
+          const company = c.preferences?.match(/Empresa:\s*([^|]+)/i)?.[1]?.trim() || (c.name.includes('(') ? c.name.match(/\(([^)]+)\)/)?.[1] : c.name);
+          const contact = c.name.replace(/\s*\([^)]*\)\s*$/, '') || c.name;
+          const guestsRange = c.preferences?.match(/Faixa\s*(?:Pessoas|Convidados):\s*([^|]+)/i)?.[1]?.trim() || null;
+          const ig = c.preferences?.match(/Instagram:\s*([^|]+)/i)?.[1]?.trim() || null;
+          const birth = c.preferences?.match(/Nascimento:\s*([^|]+)/i)?.[1]?.trim() || null;
+          const brand = c.preferences?.match(/Conhecia:\s*([^|]+)/i)?.[1]?.trim() || null;
+
+          const oppData = {
+            tenant_id: this.tenantId,
+            client_id: c.id,
+            company_name: company || 'Não informada',
+            contact_name: contact,
+            contact_phone: c.phone,
+            contact_email: c.email || null,
+            category: isKit ? 'KIT' : 'EVENTO',
+            event_type: isKit ? 'kit_churrasco' : 'confraternizacao_empresarial',
+            guests_range: guestsRange,
+            expected_guests: guestsRange?.includes('20') ? 20 : (isKit ? 15 : null),
+            instagram: ig,
+            birth_date: birth,
+            already_knew_brand: brand,
+            stage: 'novo_lead' as EventStage,
+            priority: (c.lead_score >= 80 ? 'ALTA' : c.lead_score >= 50 ? 'MEDIA' : 'EM_NUTRICAO') as LeadPriority,
+            origin_channel: 'QR Code',
+            origin_site: 'ChurrascoSalvador.com',
+            created_at: c.created_at,
+            estimated_value: 0,
+            contracted_value: 0
+          };
+
+          await supabaseAdmin.from('event_opportunities').insert(oppData);
+          existingSet.add(c.id);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao reconciliar leads BPE26:', e);
     }
   }
 
