@@ -14,6 +14,7 @@ interface EventOpportunityModalProps {
   isOpen: boolean;
   onClose: () => void;
   session?: any;
+  onSaveSuccess?: (updatedOpp: EventOpportunity) => void;
 }
 
 const STAGES: { key: EventStage; label: string }[] = [
@@ -27,7 +28,7 @@ const STAGES: { key: EventStage; label: string }[] = [
   { key: 'perdido', label: 'Oportunidade Perdida' }
 ];
 
-export function EventOpportunityModal({ opportunity, isOpen, onClose, session }: EventOpportunityModalProps) {
+export function EventOpportunityModal({ opportunity, isOpen, onClose, session, onSaveSuccess }: EventOpportunityModalProps) {
   const router = useRouter();
   const [currentStage, setCurrentStage] = useState<EventStage>((opportunity.stage as EventStage) || 'novo_lead');
   const [notes, setNotes] = useState(opportunity.notes || '');
@@ -63,6 +64,11 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
         throw new Error(err.error || 'Falha ao atualizar');
       }
 
+      const json = await res.json().catch(() => null);
+      if (onSaveSuccess && json?.data) {
+        onSaveSuccess(json.data);
+      }
+
       setFeedback({ type: 'success', message: 'Oportunidade atualizada com sucesso!' });
       router.refresh();
       setTimeout(() => {
@@ -81,8 +87,12 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
   const formatCurrency = (val: number = 0) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const isKit = opportunity.category === 'KIT' || opportunity.event_type === 'kit_churrasco';
+
   const cleanPhone = (opportunity.contact_phone || '').replace(/\D/g, '');
-  const wppText = `Olá ${opportunity.contact_name || ''}, tudo bem? Sou da equipe comercial da Alpha Bull Boutique de Carnes Nobres. Vimos o interesse da ${opportunity.company_name || 'sua empresa'} em realizar uma confraternização corporativa conosco através do BPE26! Gostaria de conversar sobre o cardápio e a melhor data para o seu evento?`;
+  const wppText = isKit
+    ? `Olá ${opportunity.contact_name || ''}, tudo bem? Sou da equipe comercial da Alpha Bull Boutique de Carnes Nobres. Vimos seu interesse em nossos Kits de Churrasco com cortes nobres através do BPE26! Podemos conversar sobre o kit ideal e entrega para você?`
+    : `Olá ${opportunity.contact_name || ''}, tudo bem? Sou da equipe comercial da Alpha Bull Boutique de Carnes Nobres. Vimos o interesse da ${opportunity.company_name || 'sua empresa'} em realizar uma confraternização corporativa conosco através do BPE26! Gostaria de conversar sobre o cardápio e a melhor data para o seu evento?`;
   const wppLink = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(wppText)}`;
 
   return (
@@ -93,7 +103,13 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
         <div className="p-6 border-b border-zinc-800/80 bg-zinc-900/60 flex items-start justify-between">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${priorityInfo.bg} ${priorityInfo.color}`}>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                isKit ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+              }`}>
+                {isKit ? 'Kit Churrasco' : 'Evento Corporativo'}
+              </span>
+              <span className="text-zinc-500 text-xs">•</span>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${priorityInfo.bg} ${priorityInfo.color}`}>
                 {priorityInfo.label}
               </span>
               <span className="text-zinc-500 text-xs">•</span>
@@ -103,12 +119,12 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
               </span>
             </div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-amber-400" />
-              {opportunity.company_name || 'Empresa não informada'}
+              {isKit ? <User className="w-5 h-5 text-amber-400" /> : <Building2 className="w-5 h-5 text-amber-400" />}
+              {isKit ? (opportunity.contact_name || opportunity.company_name) : (opportunity.company_name || opportunity.contact_name || 'Empresa não informada')}
             </h2>
             <p className="text-sm text-zinc-400 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-zinc-400" />
-              {opportunity.contact_name} {opportunity.contact_role ? `(${opportunity.contact_role})` : ''}
+              {isKit ? <Building2 className="w-3.5 h-3.5 text-zinc-400" /> : <User className="w-3.5 h-3.5 text-zinc-400" />}
+              {isKit ? (opportunity.company_name || 'Empresa não informada') : (`${opportunity.contact_name || ''} ${opportunity.contact_role ? `(${opportunity.contact_role})` : ''}`)}
             </p>
           </div>
           <button 
@@ -161,14 +177,18 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
           {/* Grid de Informações Chave */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
             <div>
-              <span className="text-[11px] text-zinc-400 block font-medium">Convidados / Faixa</span>
+              <span className="text-[11px] text-zinc-400 block font-medium">
+                {isKit ? 'Pessoas no Churrasco' : 'Convidados / Faixa'}
+              </span>
               <p className="text-sm font-semibold text-white flex items-center gap-1.5 mt-0.5">
                 <Users className="w-4 h-4 text-amber-400" />
                 {opportunity.guests_range || (opportunity.expected_guests ? `${opportunity.expected_guests} pessoas` : 'A definir')}
               </p>
             </div>
             <div>
-              <span className="text-[11px] text-zinc-400 block font-medium">Data Prevista</span>
+              <span className="text-[11px] text-zinc-400 block font-medium">
+                {isKit ? 'Data Pretendida' : 'Data Prevista'}
+              </span>
               <p className="text-sm font-semibold text-white flex items-center gap-1.5 mt-0.5">
                 <Calendar className="w-4 h-4 text-amber-400" />
                 {opportunity.event_date ? new Date(opportunity.event_date).toLocaleDateString('pt-BR') : 'A definir'}
@@ -223,9 +243,13 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
             </div>
 
             <div className="p-3.5 rounded-xl bg-zinc-900/30 border border-zinc-800/60 space-y-2">
-              <span className="text-[11px] text-zinc-400 block font-semibold uppercase tracking-wider">Valores da Oportunidade</span>
+              <span className="text-[11px] text-zinc-400 block font-semibold uppercase tracking-wider">
+                {isKit ? 'Valores do Kit de Churrasco' : 'Valores da Oportunidade'}
+              </span>
               <div>
-                <label className="text-[10px] text-zinc-400 block">Valor Estimado (R$)</label>
+                <label className="text-[10px] text-zinc-400 block">
+                  {isKit ? 'Orçamento Estimado (R$)' : 'Valor Estimado (R$)'}
+                </label>
                 <input
                   type="number"
                   value={estimatedValue}
@@ -235,7 +259,9 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
               </div>
               {currentStage === 'fechado' && (
                 <div>
-                  <label className="text-[10px] text-emerald-400 font-medium block">Valor Contratado Final (R$)</label>
+                  <label className="text-[10px] text-emerald-400 font-medium block">
+                    {isKit ? 'Valor de Venda do Kit (R$)' : 'Valor Contratado Final (R$)'}
+                  </label>
                   <input
                     type="number"
                     value={contractedValue}
