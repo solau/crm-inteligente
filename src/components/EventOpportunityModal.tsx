@@ -134,7 +134,7 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session }:
           {/* Stepper de Etapas Comerciais */}
           <div>
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block mb-2.5">
-              Etapa Comercial do Evento
+              Etapa Comercial
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {STAGES.map((s) => {

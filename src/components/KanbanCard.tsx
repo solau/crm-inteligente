@@ -3,12 +3,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Phone, CheckCircle, Clock, Ban, Building2, User, 
-  Calendar, Users, DollarSign, Tag, ChevronRight, Sparkles 
+  Calendar, Users, ChevronRight 
 } from 'lucide-react';
 import Link from 'next/link';
 import { EventOpportunityModal } from './EventOpportunityModal';
-import { STAGE_LABELS, PRIORITY_LABELS } from '@/lib/utils/priorityLogic';
-import { LeadPriority } from '@/lib/types/events';
+import { STAGE_LABELS } from '@/lib/utils/priorityLogic';
 
 interface KanbanCardProps {
   client: any;
@@ -25,7 +24,17 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const isEventCard = campaignType === 'EVENTOS' || Boolean(client.is_event_opportunity);
+  const isKitCard = campaignType === 'KITS' || Boolean(client.is_kit_opportunity) || (
+    client.category === 'KIT' || 
+    (client.preferences && typeof client.preferences === 'string' && client.preferences.toLowerCase().includes('kit') && client.preferences.toLowerCase().includes('bpe26'))
+  );
+
+  const isEventCard = !isKitCard && (campaignType === 'EVENTOS' || Boolean(client.is_event_opportunity) || (
+    client.preferences && typeof client.preferences === 'string' && (
+      client.preferences.toLowerCase().includes('confraterniza') ||
+      client.preferences.toLowerCase().includes('evento')
+    )
+  ));
 
   const registerInteraction = async () => {
     if (isLoading) return;
@@ -80,11 +89,197 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
     }
   };
 
-  // Texto padrão persuasivo do WhatsApp
-  let wppText = `Olá ${client.name}, tudo bem?`;
+  // Se for card de Eventos BPE26
   if (isEventCard) {
-    wppText = `Olá ${client.name}, tudo bem? Sou da equipe da Alpha Bull Boutique de Carnes Nobres. Vimos o interesse da ${client.company_name || 'sua empresa'} em realizar uma confraternização corporativa através da nossa ação no BPE26! Podemos conversar sobre o formato e cardápio de carnes nobres para o seu evento?`;
-  } else if (campaignType === 'CORRIDA_ALPHAVILLE') {
+    const companyName = client.company_name || (client.name?.includes('(') ? client.name.match(/\(([^)]+)\)/)?.[1] : null) || client.name || 'Empresa BPE26';
+    const contactName = client.contact_name || client.name?.replace(/\s*\([^)]*\)\s*$/, '') || client.name || 'Responsável não informado';
+    const guestsDisplay = client.guests_range || (client.expected_guests ? `${client.expected_guests} convidados` : 'A definir');
+    const formattedDate = client.created_at ? new Date(client.created_at).toLocaleDateString('pt-BR') : 'Data recente';
+    const stageKey = client.stage || 'novo_lead';
+    const stageLabel = STAGE_LABELS[stageKey] || 'Novo Lead';
+
+    const oppData = {
+      id: client.event_opportunity_id || client.id,
+      client_id: client.id,
+      company_name: companyName,
+      contact_name: contactName,
+      contact_phone: client.phone,
+      expected_guests: client.expected_guests,
+      guests_range: client.guests_range,
+      event_date: client.event_date,
+      estimated_value: client.estimated_value || 0,
+      contracted_value: client.contracted_value || 0,
+      origin_channel: client.origin_channel,
+      origin_site: client.origin_site,
+      stage: client.stage || 'novo_lead',
+      priority: client.priority || 'EM_NUTRICAO',
+      assigned_to_name: client.assigned_to_name,
+      notes: client.notes,
+      created_at: client.created_at,
+      category: client.category || 'EVENTO',
+      campaign_code: client.campaign_code || 'BPE26'
+    };
+
+    return (
+      <>
+        <div 
+          onClick={() => setIsModalOpen(true)}
+          className="bg-zinc-900/80 hover:bg-zinc-900 border border-amber-500/30 hover:border-amber-500/60 p-3.5 rounded-xl shadow-md hover:shadow-xl hover:shadow-amber-500/5 transition-all mb-3 group relative cursor-pointer flex flex-col gap-2"
+        >
+          {/* Top: Nome da empresa em destaque & Etapa comercial */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
+              <h4 className="font-bold text-white text-sm truncate group-hover:text-amber-300 transition-colors" title={companyName}>
+                {companyName}
+              </h4>
+            </div>
+            <span className="shrink-0 px-2 py-0.5 rounded-md bg-white/10 text-white/90 text-[11px] font-medium whitespace-nowrap">
+              {stageLabel}
+            </span>
+          </div>
+
+          {/* Nome do responsável */}
+          <div className="flex items-center gap-1.5 text-xs text-white/70 truncate">
+            <User className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <span className="truncate">{contactName}</span>
+          </div>
+
+          {/* Convidados & Data do cadastro */}
+          <div className="flex items-center justify-between text-xs text-white/60 pt-1.5 border-t border-white/5">
+            <div className="flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>{guestsDisplay}</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-white/40">
+              <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
+              <span>{formattedDate}</span>
+            </div>
+          </div>
+
+          {/* Botão GERENCIAR */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsModalOpen(true);
+            }}
+            className="w-full mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <span>GERENCIAR</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Modal Interativo Compartilhado de Gerenciamento da Oportunidade */}
+        <EventOpportunityModal
+          opportunity={oppData}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          session={session}
+        />
+      </>
+    );
+  }
+
+  // Se for card de Kits BPE26
+  if (isKitCard) {
+    const clientName = client.contact_name || client.name?.replace(/\s*\([^)]*\)\s*$/, '') || client.name || 'Cliente BPE26';
+    const companyName = client.company_name || client.preferences?.match(/Empresa:\s*([^|]+)/i)?.[1]?.trim() || (client.name?.includes('(') ? client.name.match(/\(([^)]+)\)/)?.[1] : null) || null;
+    const peopleDisplay = client.guests_range || (client.expected_guests ? `${client.expected_guests} pessoas` : client.preferences?.match(/Faixa Pessoas:\s*([^|]+)/i)?.[1]?.trim() || 'A definir');
+    const formattedDate = client.created_at ? new Date(client.created_at).toLocaleDateString('pt-BR') : 'Data recente';
+    const stageKey = client.stage || 'novo_lead';
+    const stageLabel = STAGE_LABELS[stageKey] || 'Novo Lead';
+
+    const oppData = {
+      id: client.event_opportunity_id || client.id,
+      client_id: client.id,
+      company_name: companyName || clientName,
+      contact_name: clientName,
+      contact_phone: client.phone,
+      expected_guests: client.expected_guests,
+      guests_range: client.guests_range || (client.preferences?.match(/Faixa Pessoas:\s*([^|]+)/i)?.[1]?.trim() || null),
+      event_date: client.event_date,
+      estimated_value: client.estimated_value || 0,
+      contracted_value: client.contracted_value || 0,
+      origin_channel: client.origin_channel,
+      origin_site: client.origin_site,
+      stage: client.stage || 'novo_lead',
+      priority: client.priority || 'EM_NUTRICAO',
+      assigned_to_name: client.assigned_to_name,
+      notes: client.notes,
+      created_at: client.created_at,
+      category: 'KIT',
+      campaign_code: client.campaign_code || 'BPE26'
+    };
+
+    return (
+      <>
+        <div 
+          onClick={() => setIsModalOpen(true)}
+          className="bg-zinc-900/80 hover:bg-zinc-900 border border-amber-500/30 hover:border-amber-500/60 p-3.5 rounded-xl shadow-md hover:shadow-xl hover:shadow-amber-500/5 transition-all mb-3 group relative cursor-pointer flex flex-col gap-2"
+        >
+          {/* Top: Nome do cliente em destaque & Etapa comercial */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <User className="w-4 h-4 text-amber-400 shrink-0" />
+              <h4 className="font-bold text-white text-sm truncate group-hover:text-amber-300 transition-colors" title={clientName}>
+                {clientName}
+              </h4>
+            </div>
+            <span className="shrink-0 px-2 py-0.5 rounded-md bg-white/10 text-white/90 text-[11px] font-medium whitespace-nowrap">
+              {stageLabel}
+            </span>
+          </div>
+
+          {/* Nome da empresa (quando disponível) */}
+          {companyName ? (
+            <div className="flex items-center gap-1.5 text-xs text-white/70 truncate">
+              <Building2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <span className="truncate">{companyName}</span>
+            </div>
+          ) : null}
+
+          {/* Pessoas no churrasco & Data do cadastro */}
+          <div className="flex items-center justify-between text-xs text-white/60 pt-1.5 border-t border-white/5">
+            <div className="flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>{peopleDisplay}</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-white/40">
+              <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
+              <span>{formattedDate}</span>
+            </div>
+          </div>
+
+          {/* Botão GERENCIAR */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsModalOpen(true);
+            }}
+            className="w-full mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <span>GERENCIAR</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Modal Interativo Compartilhado de Gerenciamento da Oportunidade */}
+        <EventOpportunityModal
+          opportunity={oppData}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          session={session}
+        />
+      </>
+    );
+  }
+
+  // Texto padrão persuasivo do WhatsApp para outras campanhas do CRM
+  let wppText = `Olá ${client.name}, tudo bem?`;
+  if (campaignType === 'CORRIDA_ALPHAVILLE') {
     wppText = `Olá ${client.name}, tudo bem? Sou da equipe da Alpha Bull e vimos que você participou da Corrida Alphaville! 🏃‍♂️🥩 Preparamos uma condição especial exclusiva para você repor as energias e conhecer nossos cortes nobres. Gostaria de dar uma olhadinha no nosso cardápio?`;
   } else if (campaignType === 'LEADS_BPE25') {
     wppText = `Olá ${client.name}, tudo bem? Sou da equipe da Alpha Bull! Vimos seu contato através do BPE 2025. 🥩✨ Preparamos uma condição super especial para você conhecer nossos cortes nobres e produtos de alta qualidade. Gostaria de dar uma olhada no nosso catálogo?`;
@@ -99,140 +294,7 @@ export function KanbanCard({ client, campaignType, session, onMessageSent }: Kan
   const cleanPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
   const wppLink = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(wppText)}`;
 
-  // Informações específicas de eventos
-  const stageKey = client.stage || 'novo_lead';
-  const stageLabel = STAGE_LABELS[stageKey] || 'Novo Lead';
-  const priorityKey = (client.priority as LeadPriority) || 'EM_NUTRICAO';
-  const priorityInfo = PRIORITY_LABELS[priorityKey] || PRIORITY_LABELS.EM_NUTRICAO;
-
-  // Se for card de eventos, renderiza o layout corporativo rico
-  if (isEventCard) {
-    const oppData = {
-      id: client.event_opportunity_id || client.id,
-      client_id: client.id,
-      company_name: client.company_name || client.name,
-      contact_name: client.name,
-      contact_phone: client.phone,
-      expected_guests: client.expected_guests,
-      event_date: client.event_date,
-      estimated_value: client.estimated_value,
-      origin_channel: client.origin_channel,
-      origin_site: client.origin_site,
-      stage: client.stage,
-      priority: client.priority,
-      assigned_to_name: client.assigned_to_name,
-      notes: client.notes
-    };
-
-    return (
-      <>
-        <div 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-zinc-900/80 hover:bg-zinc-900 border border-amber-500/30 hover:border-amber-500/60 p-4 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-amber-500/5 transition-all mb-3 group relative cursor-pointer"
-        >
-          {/* Header do Card de Evento */}
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex-1 min-w-0 pr-2">
-              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1 mb-0.5">
-                <Building2 className="w-3 h-3 text-amber-400" />
-                {client.company_name || 'Empresa BPE26'}
-              </span>
-              <h4 className="font-semibold text-white/95 text-sm truncate group-hover:text-amber-300 transition-colors">
-                {client.name}
-              </h4>
-            </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${priorityInfo.bg} ${priorityInfo.color} whitespace-nowrap`}>
-              {priorityInfo.label}
-            </span>
-          </div>
-
-          {/* Dados do Evento */}
-          <div className="grid grid-cols-2 gap-2 text-xs text-white/70 my-2.5 p-2 rounded-lg bg-black/40 border border-white/5">
-            <div className="flex items-center gap-1.5 truncate">
-              <Users className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-              <span className="truncate">{client.guests_range || (client.expected_guests ? `${client.expected_guests} conv.` : 'A definir')}</span>
-            </div>
-            <div className="flex items-center gap-1.5 truncate">
-              <Calendar className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-              <span className="truncate">
-                {client.event_date ? new Date(client.event_date).toLocaleDateString('pt-BR') : 'A definir'}
-              </span>
-            </div>
-            {client.estimated_value > 0 && (
-              <div className="flex items-center gap-1.5 col-span-2 text-emerald-400 font-semibold pt-1 border-t border-white/5">
-                <DollarSign className="w-3.5 h-3.5" />
-                <span>Est: {formatMoney(client.estimated_value)}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Status & Origem */}
-          <div className="flex items-center justify-between text-[11px] mb-3 text-white/60">
-            <span className="px-2 py-0.5 rounded-full bg-white/10 text-white/90 font-medium">
-              {stageLabel}
-            </span>
-            <span className="text-[10px] text-white/40 truncate max-w-[110px]" title={client.assigned_to_name || 'Sem responsável'}>
-              {client.assigned_to_name ? `Resp: ${client.assigned_to_name}` : 'Sem resp.'}
-            </span>
-          </div>
-
-          {/* Botões de Ação */}
-          <div className="flex flex-col gap-2 border-t border-white/10 pt-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center gap-2">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  registerInteraction();
-                }}
-                disabled={isLoading}
-                className={`flex items-center gap-1 text-[11px] font-medium text-white/50 hover:text-white/90 bg-white/5 hover:bg-white/15 px-2 py-1.5 rounded-lg transition-colors flex-1 justify-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title="Marcar como contatado sem abrir o WhatsApp"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                {isLoading ? 'Salvando...' : 'Já Falei'}
-              </button>
-              
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!isLoading) {
-                    window.open(wppLink, '_blank', 'noopener,noreferrer');
-                    registerInteraction();
-                  }
-                }}
-                disabled={isLoading}
-                className={`flex items-center gap-1 text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-2.5 py-1.5 rounded-lg transition-colors flex-1 justify-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <Phone className="w-3.5 h-3.5" />
-                WhatsApp
-              </button>
-            </div>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsModalOpen(true);
-              }}
-              className="flex items-center justify-center gap-1 text-[10px] font-semibold text-white/70 hover:text-white bg-white/5 hover:bg-white/10 py-1 px-2 rounded-md transition-colors w-full"
-            >
-              <span>Gerenciar Oportunidade</span>
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* Modal Interativo de Oportunidade de Evento */}
-        <EventOpportunityModal
-          opportunity={oppData}
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          session={session}
-        />
-      </>
-    );
-  }
-
-  // Card Tradicional do CRM
+  // Card Tradicional do CRM (Cashback, Ausentes, etc.)
   return (
     <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-xl shadow-lg hover:shadow-xl transition-all mb-3 group relative">
       <div className="flex justify-between items-start mb-2">
