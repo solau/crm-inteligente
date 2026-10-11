@@ -33,6 +33,7 @@ export default async function KanbanPage() {
 
   // Busca preferências de TODOS os clientes cadastrados com paginação (evita o limite padrão de 1000 do Supabase)
   const prefMap = new Map<string, string>();
+  const createdAtMap = new Map<string, string>();
   let prefFrom = 0;
   const prefStep = 1000;
   let hasMorePrefs = true;
@@ -40,7 +41,7 @@ export default async function KanbanPage() {
   while (hasMorePrefs) {
     const { data: prefBatch, error: prefErr } = await supabase
       .from('clients')
-      .select('id, preferences')
+      .select('id, preferences, created_at')
       .not('preferences', 'is', null)
       .order('id')
       .range(prefFrom, prefFrom + prefStep - 1);
@@ -51,6 +52,7 @@ export default async function KanbanPage() {
 
     prefBatch.forEach((p: any) => {
       if (p.preferences) prefMap.set(p.id, p.preferences);
+      if (p.created_at) createdAtMap.set(p.id, p.created_at);
     });
 
     if (prefBatch.length < prefStep) {
@@ -81,6 +83,7 @@ export default async function KanbanPage() {
     if (data && data.length > 0) {
       for (const row of data) {
         row.preferences = prefMap.get(row.id) || null;
+        row.created_at = createdAtMap.get(row.id) || row.created_at || null;
         const existingIdx = clients.findIndex(c => c.id === row.id || isSamePhone(c.phone, row.phone));
         if (existingIdx === -1) {
           clients.push(row);
@@ -119,12 +122,17 @@ export default async function KanbanPage() {
 
     if (eventOpps && eventOpps.length > 0) {
       for (const opp of eventOpps) {
+        const isKitOpp = opp.category === 'KIT' || opp.event_type === 'kit_churrasco';
         const existingIdx = clients.findIndex(c => c.id === opp.client_id || isSamePhone(c.phone, opp.contact_phone));
         if (existingIdx !== -1) {
-          clients[existingIdx].is_event_opportunity = true;
+          clients[existingIdx].is_event_opportunity = !isKitOpp;
+          clients[existingIdx].is_kit_opportunity = isKitOpp;
+          clients[existingIdx].category = opp.category || (isKitOpp ? 'KIT' : 'EVENTO');
           clients[existingIdx].event_opportunity_id = opp.id;
           clients[existingIdx].company_name = opp.company_name;
+          clients[existingIdx].contact_name = opp.contact_name;
           clients[existingIdx].expected_guests = opp.expected_guests;
+          clients[existingIdx].guests_range = opp.guests_range;
           clients[existingIdx].event_date = opp.event_date;
           clients[existingIdx].estimated_value = opp.estimated_value;
           clients[existingIdx].stage = opp.stage;
@@ -133,6 +141,7 @@ export default async function KanbanPage() {
           clients[existingIdx].origin_channel = opp.origin_channel;
           clients[existingIdx].origin_site = opp.origin_site;
           clients[existingIdx].notes = opp.notes;
+          clients[existingIdx].created_at = opp.created_at || clients[existingIdx].created_at;
         } else {
           clients.push({
             id: opp.client_id || opp.id,
@@ -147,10 +156,14 @@ export default async function KanbanPage() {
             last_purchase_date: null,
             next_expire_date: null,
             total_expired_amount: 0,
-            is_event_opportunity: true,
+            is_event_opportunity: !isKitOpp,
+            is_kit_opportunity: isKitOpp,
+            category: opp.category || (isKitOpp ? 'KIT' : 'EVENTO'),
             event_opportunity_id: opp.id,
             company_name: opp.company_name,
+            contact_name: opp.contact_name,
             expected_guests: opp.expected_guests,
+            guests_range: opp.guests_range,
             event_date: opp.event_date,
             estimated_value: opp.estimated_value,
             stage: opp.stage,
@@ -159,7 +172,8 @@ export default async function KanbanPage() {
             origin_channel: opp.origin_channel,
             origin_site: opp.origin_site,
             notes: opp.notes,
-            preferences: `BPE26 - Eventos Corporativos | ${opp.company_name}`
+            created_at: opp.created_at,
+            preferences: `BPE26 - ${isKitOpp ? 'Kit Churrasco' : 'Eventos Corporativos'} | ${opp.company_name}`
           });
         }
       }
