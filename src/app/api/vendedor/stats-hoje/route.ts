@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSession } from '@/lib/auth';
+import { startOfTodayUTC } from '@/lib/utils/dateUtils';
 
 export async function GET() {
   try {
@@ -22,26 +23,8 @@ export async function GET() {
       }
     );
 
-    // Obter data atual no fuso horário do Brasil (America/Sao_Paulo)
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-
-    const parts = formatter.formatToParts(now);
-    const partMap: Record<string, string> = {};
-    parts.forEach(p => { partMap[p.type] = p.value; });
-
-    const y = partMap.year;
-    const m = partMap.month;
-    const d = partMap.day;
-
-    // Início do dia em Brasília: YYYY-MM-DDT00:00:00-03:00 convertido para ISO string
-    // -03:00 significa 03:00:00 UTC
-    const startOfDayBrasiliaISO = new Date(`${y}-${m}-${d}T00:00:00-03:00`).toISOString();
+    // Início do dia em Brasília (00:00:00-03:00) convertido para ISO UTC (ex: 03:00:00Z)
+    const startOfDayBrasiliaISO = startOfTodayUTC();
 
     // Buscar mensagens enviadas pelo vendedor hoje (a partir de 00:00 de Brasília)
     const { count, error } = await supabase
@@ -61,7 +44,7 @@ export async function GET() {
       sellerName: session.name,
       msgsToday: count || 0,
       startOfDay: startOfDayBrasiliaISO,
-      timestamp: now.toISOString()
+      timestamp: new Date().toISOString()
     });
   } catch (err: any) {
     console.error('Erro na API stats-hoje:', err);

@@ -22,6 +22,7 @@ export function middleware(request: NextRequest) {
           !path.startsWith('/vendedor/kanban') && 
           !path.startsWith('/vendedor/desempenho') &&
           !path.startsWith('/clientes') &&
+          !path.startsWith('/campanhas') &&
           !path.startsWith('/api/')
         ) {
           return NextResponse.redirect(new URL('/vendedor/kanban', request.url));
