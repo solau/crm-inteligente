@@ -1,10 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   X, Building2, User, Phone, Mail, Calendar, Users, DollarSign, 
   Tag, Clock, CheckCircle2, AlertCircle, ArrowRight, Save, Send,
-  FileText, ShieldCheck, MapPin, ChevronRight
+  FileText, ShieldCheck, MapPin, ChevronRight, Award, Percent, HelpCircle
 } from 'lucide-react';
 import { EventOpportunity, EventStage, EventStageHistory, LeadPriority } from '@/lib/types/events';
 import { STAGE_LABELS, PRIORITY_LABELS } from '@/lib/utils/priorityLogic';
@@ -38,6 +38,31 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session, o
   const [nextContactDate, setNextContactDate] = useState(opportunity.next_contact_date || '');
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [quizInfo, setQuizInfo] = useState<{
+    has_participated: boolean;
+    submission?: any;
+    coupon?: any;
+  } | null>(null);
+  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !opportunity.contact_phone) return;
+    const cleanPhone = (opportunity.contact_phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return;
+
+    setIsLoadingQuiz(true);
+    fetch(`/api/bpe26/admin/quiz/resultado-lead?phone=${cleanPhone}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.has_participated) {
+          setQuizInfo(data);
+        } else {
+          setQuizInfo(null);
+        }
+      })
+      .catch(err => console.warn('Erro ao carregar dados do quiz:', err))
+      .finally(() => setIsLoadingQuiz(false));
+  }, [isOpen, opportunity.contact_phone]);
 
   if (!isOpen) return null;
 
@@ -302,6 +327,90 @@ export function EventOpportunityModal({ opportunity, isOpen, onClose, session, o
               </div>
             )}
           </div>
+
+          {/* Seção: RESULTADO DO QUIZ (Desafio Alpha Bull - Tablet BPE26) */}
+          {quizInfo?.has_participated && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-zinc-900/60 to-zinc-950 border border-amber-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                    <Award className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                      Resultado do Quiz — Desafio Alpha Bull
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Origem: <span className="text-white font-medium">Quiz Presencial — Estande BPE26</span> • Versão {quizInfo.submission?.quiz_version || 1}
+                    </p>
+                  </div>
+                </div>
+                {quizInfo.submission?.completed_at && (
+                  <span className="text-[10px] text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    {new Date(quizInfo.submission.completed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80">
+                  <span className="text-[10px] text-zinc-400 block font-medium">Pontuação</span>
+                  <div className="text-base font-bold text-white flex items-baseline gap-1 mt-0.5">
+                    <span className="text-amber-400">{quizInfo.submission?.score ?? '—'}</span>
+                    <span className="text-xs text-zinc-500">/ 5 acertos</span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80">
+                  <span className="text-[10px] text-zinc-400 block font-medium">Desconto Conquistado</span>
+                  <div className="text-base font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
+                    <Percent className="w-3.5 h-3.5" />
+                    <span>{quizInfo.submission?.discount_percent ?? quizInfo.coupon?.discount_percent ?? 0}% OFF</span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 col-span-2">
+                  <span className="text-[10px] text-zinc-400 block font-medium">Cupom Individual Alpha Bull</span>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <span className="font-mono text-sm font-bold text-amber-300">
+                      {quizInfo.coupon?.code || quizInfo.submission?.coupon_code || 'Sem cupom (score < 2)'}
+                    </span>
+                    {(quizInfo.coupon || quizInfo.submission?.coupon_code) && (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        (quizInfo.coupon?.status === 'UTILIZADO')
+                          ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}>
+                        {quizInfo.coupon?.status || 'ATIVO'}
+                      </span>
+                    )}
+                  </div>
+                  {quizInfo.coupon?.expires_at && (
+                    <span className="text-[9px] text-zinc-500 block mt-1">
+                      Validade: {new Date(quizInfo.coupon.expires_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Respostas detalhadas em visualização administrativa autorizada */}
+              {quizInfo.submission?.answers && Object.keys(quizInfo.submission.answers).length > 0 && (
+                <div className="pt-2 border-t border-zinc-800/60">
+                  <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider block mb-1.5">
+                    Respostas do Participante (Visualização Administrativa):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(quizInfo.submission.answers).map(([qid, ans]: [string, any], idx: number) => (
+                      <span key={qid} className="text-[10px] px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono">
+                        Q{idx + 1}: <strong className="text-amber-400">{ans}</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Observações Comerciais */}
           <div>
