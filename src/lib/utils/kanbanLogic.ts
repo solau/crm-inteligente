@@ -170,6 +170,11 @@ export function getKanbanColumns(
       continue;
     }
 
+    // Leads BPE26 são geridos exclusivamente no Painel de Campanhas (/campanhas/bpe26)
+    if (c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('bpe26')) {
+      continue;
+    }
+
     // Prioridade 0: Corrida Alphaville (Apenas Prospectos que NUNCA compraram)
     const isCorrida = c.preferences && typeof c.preferences === 'string' && c.preferences.toLowerCase().includes('corrida alphaville');
     if (isCorrida && !hasPurchased) {
@@ -191,11 +196,10 @@ export function getKanbanColumns(
       continue;
     }
 
-    // Prioridade 0.1: Leads BPE (Apenas Prospectos que NUNCA compraram)
+    // Prioridade 0.1: Leads BPE25 (Apenas Prospectos que NUNCA compraram)
     const isBpe25 = c.preferences && typeof c.preferences === 'string' && (
       c.preferences.toLowerCase().includes('bpe25') || 
-      c.preferences.toLowerCase().includes('bpe26') || 
-      c.preferences.toLowerCase().includes('bpe')
+      (c.preferences.toLowerCase().includes('bpe') && !c.preferences.toLowerCase().includes('bpe26'))
     );
     if (isBpe25 && !hasPurchased) {
       let isBlockedBpe25 = false;
