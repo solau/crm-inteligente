@@ -15,8 +15,8 @@ describe('BPE26 Campaign & Quiz Logic', () => {
     expect(quizRepo.calculateDiscount(5)).toBe(20);
   });
 
-  test('as perguntas públicas do quiz NÃO devem conter o campo is_correct', () => {
-    const publicQuestions = quizRepo.getPublicQuizQuestions();
+  test('as perguntas públicas do quiz NÃO devem conter o campo is_correct', async () => {
+    const publicQuestions = await quizRepo.getPublicQuizQuestions();
     expect(publicQuestions.length).toBe(5);
     publicQuestions.forEach((q) => {
       q.options.forEach((opt: any) => {

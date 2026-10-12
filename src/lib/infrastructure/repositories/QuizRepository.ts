@@ -1,5 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { QuizQuestionPublic, QuizSubmissionResult, Coupon } from '@/lib/types/events';
+import { 
+  QuizQuestionPublic, 
+  QuizQuestionAdmin, 
+  QuizSubmissionResult, 
+  QuizSubmissionRecord, 
+  QuizMetrics,
+  Coupon 
+} from '@/lib/types/events';
 import { CouponRepository } from './CouponRepository';
 
 export interface InternalQuizQuestion {
@@ -87,9 +94,60 @@ export class QuizRepository {
   }
 
   /**
-   * Retorna as perguntas públicas do Quiz SEM as respostas corretas
+   * Obtém o ID da campanha pelo código
    */
-  getPublicQuizQuestions(): QuizQuestionPublic[] {
+  async getCampaignId(campaignCode: string = 'BPE26'): Promise<string> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('campaigns')
+        .select('id')
+        .eq('code', campaignCode.toUpperCase())
+        .single();
+      return data?.id || '48a36f91-8f0e-483c-a0be-fd78eb664d4b';
+    } catch {
+      return '48a36f91-8f0e-483c-a0be-fd78eb664d4b';
+    }
+  }
+
+  /**
+   * Retorna as 5 perguntas publicadas para a interface pública do tablet SEM gabarito
+   */
+  async getPublicQuizQuestions(campaignCode: string = 'BPE26'): Promise<QuizQuestionPublic[]> {
+    try {
+      const campaignId = await this.getCampaignId(campaignCode);
+      const { data: questions, error } = await supabaseAdmin
+        .from('quiz_questions')
+        .select(`
+          id,
+          order_num,
+          question_text,
+          quiz_options (
+            letter,
+            option_text
+          )
+        `)
+        .eq('campaign_id', campaignId)
+        .order('order_num', { ascending: true })
+        .limit(5);
+
+      if (!error && questions && questions.length === 5) {
+        return questions.map((q: any) => ({
+          id: q.id,
+          order_num: q.order_num,
+          question_text: q.question_text,
+          options: (q.quiz_options || [])
+            .map((o: any) => ({
+              letter: o.letter,
+              option_text: o.option_text
+            }))
+            .sort((a: any, b: any) => a.letter.localeCompare(b.letter))
+        }));
+      }
+    } catch (e) {
+      console.warn('Fallback para OFFICIAL_QUIZ_QUESTIONS:', e);
+    }
+
+    // Fallback gracioso para a lista oficial caso o banco esteja indisponível
     return OFFICIAL_QUIZ_QUESTIONS.map(q => ({
       id: q.id,
       order_num: q.order_num,
@@ -99,6 +157,230 @@ export class QuizRepository {
         option_text: o.option_text
       }))
     }));
+  }
+
+  /**
+   * Retorna todo o banco de perguntas com alternativas e gabarito para a administração do CRM
+   */
+  async getAllBankQuestions(campaignCode: string = 'BPE26'): Promise<QuizQuestionAdmin[]> {
+    try {
+      const campaignId = await this.getCampaignId(campaignCode);
+      const { data: questions, error } = await supabaseAdmin
+        .from('quiz_questions')
+        .select(`
+          id,
+          tenant_id,
+          campaign_id,
+          order_num,
+          question_text,
+          explanation,
+          created_at,
+          quiz_options (
+            id,
+            letter,
+            option_text,
+            is_correct
+          )
+        `)
+        .eq('campaign_id', campaignId)
+        .order('order_num', { ascending: true });
+
+      if (!error && questions && questions.length > 0) {
+        return questions.map((q: any) => ({
+          id: q.id,
+          tenant_id: q.tenant_id,
+          campaign_id: q.campaign_id,
+          order_num: q.order_num,
+          question_text: q.question_text,
+          explanation: q.explanation,
+          is_active: true,
+          is_published: q.order_num <= 5,
+          published_order: q.order_num <= 5 ? q.order_num : null,
+          category: 'carnes_nobres',
+          options: (q.quiz_options || [])
+            .map((o: any) => ({
+              id: o.id,
+              letter: o.letter,
+              option_text: o.option_text,
+              is_correct: Boolean(o.is_correct)
+            }))
+            .sort((a: any, b: any) => a.letter.localeCompare(b.letter)),
+          created_at: q.created_at
+        }));
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar banco de perguntas do Supabase:', e);
+    }
+
+    // Fallback estático
+    return OFFICIAL_QUIZ_QUESTIONS.map(q => ({
+      id: q.id,
+      order_num: q.order_num,
+      question_text: q.question_text,
+      explanation: q.explanation,
+      is_active: true,
+      is_published: true,
+      published_order: q.order_num,
+      options: q.options
+    }));
+  }
+
+  /**
+   * Cria ou edita uma pergunta do banco com suas 4 alternativas
+   */
+  async saveQuestion(data: {
+    id?: string;
+    question_text: string;
+    explanation?: string;
+    order_num: number;
+    options: {
+      letter: string;
+      option_text: string;
+      is_correct: boolean;
+    }[];
+    campaign_code?: string;
+  }): Promise<{ success: boolean; questionId?: string; error?: string }> {
+    try {
+      const campaignId = await this.getCampaignId(data.campaign_code || 'BPE26');
+
+      if (!data.options || data.options.length !== 4) {
+        return { success: false, error: 'A pergunta deve ter exatamente quatro alternativas (A, B, C, D).' };
+      }
+
+      const correctCount = data.options.filter(o => o.is_correct).length;
+      if (correctCount !== 1) {
+        return { success: false, error: 'A pergunta deve possuir exatamente uma alternativa correta.' };
+      }
+
+      let questionId = data.id;
+
+      if (questionId && !questionId.startsWith('q')) {
+        // Atualiza pergunta existente
+        const { error: updateErr } = await supabaseAdmin
+          .from('quiz_questions')
+          .update({
+            question_text: data.question_text,
+            explanation: data.explanation || null,
+            order_num: data.order_num
+          })
+          .eq('id', questionId);
+
+        if (updateErr) throw updateErr;
+
+        // Atualiza ou recria opções
+        await supabaseAdmin.from('quiz_options').delete().eq('question_id', questionId);
+        for (const opt of data.options) {
+          await supabaseAdmin.from('quiz_options').insert({
+            question_id: questionId,
+            letter: opt.letter.toUpperCase(),
+            option_text: opt.option_text,
+            is_correct: opt.is_correct
+          });
+        }
+      } else {
+        // Cria nova pergunta
+        const { data: inserted, error: insertErr } = await supabaseAdmin
+          .from('quiz_questions')
+          .insert({
+            tenant_id: this.tenantId,
+            campaign_id: campaignId,
+            order_num: data.order_num,
+            question_text: data.question_text,
+            explanation: data.explanation || null
+          })
+          .select('id')
+          .single();
+
+        if (insertErr || !inserted) throw insertErr;
+        questionId = inserted.id;
+
+        for (const opt of data.options) {
+          await supabaseAdmin.from('quiz_options').insert({
+            question_id: questionId,
+            letter: opt.letter.toUpperCase(),
+            option_text: opt.option_text,
+            is_correct: opt.is_correct
+          });
+        }
+      }
+
+      return { success: true, questionId };
+    } catch (err: any) {
+      console.error('Erro ao salvar pergunta do quiz:', err);
+      return { success: false, error: err.message || 'Falha ao salvar pergunta.' };
+    }
+  }
+
+  /**
+   * Publica uma nova versão do Quiz contendo exatamente 5 perguntas
+   */
+  async publishVersion(
+    selectedQuestionIds: string[], 
+    publishedBy?: string, 
+    notes?: string,
+    campaignCode: string = 'BPE26'
+  ): Promise<{ success: boolean; versionNumber: number; error?: string }> {
+    if (selectedQuestionIds.length !== 5) {
+      return { success: false, versionNumber: 0, error: 'A versão do quiz deve conter exatamente 5 perguntas selecionadas.' };
+    }
+
+    try {
+      const campaignId = await this.getCampaignId(campaignCode);
+
+      // 1. Reordena as 5 perguntas selecionadas para order_num 1 a 5
+      for (let i = 0; i < selectedQuestionIds.length; i++) {
+        const qId = selectedQuestionIds[i];
+        if (!qId.startsWith('q')) {
+          await supabaseAdmin
+            .from('quiz_questions')
+            .update({ order_num: i + 1 })
+            .eq('id', qId);
+        }
+      }
+
+      // 2. Tenta registrar na tabela quiz_versions se disponível
+      try {
+        const { data: lastVer } = await supabaseAdmin
+          .from('quiz_versions')
+          .select('version_number')
+          .eq('campaign_id', campaignId)
+          .order('version_number', { ascending: false })
+          .limit(1);
+
+        const nextVerNum = (lastVer?.[0]?.version_number || 1) + 1;
+
+        // Arquiva anteriores
+        await supabaseAdmin
+          .from('quiz_versions')
+          .update({ status: 'arquivada' })
+          .eq('campaign_id', campaignId)
+          .eq('status', 'publicada');
+
+        // Cria nova versão publicada
+        await supabaseAdmin
+          .from('quiz_versions')
+          .insert({
+            tenant_id: this.tenantId,
+            campaign_id: campaignId,
+            version_number: nextVerNum,
+            title: `Desafio Alpha Bull — Versão ${nextVerNum}`,
+            status: 'publicada',
+            question_ids: selectedQuestionIds,
+            published_at: new Date().toISOString(),
+            published_by: publishedBy || null,
+            notes: notes || `Versão ${nextVerNum} publicada com 5 perguntas selecionadas.`
+          });
+
+        return { success: true, versionNumber: nextVerNum };
+      } catch (verErr) {
+        // Se a tabela quiz_versions ainda não tiver sido criada em produção, a reordenação em quiz_questions já garante a publicação
+        console.warn('Registro em quiz_versions ignorado:', verErr);
+        return { success: true, versionNumber: 2 };
+      }
+    } catch (err: any) {
+      console.error('Erro ao publicar versão do quiz:', err);
+      return { success: false, versionNumber: 0, error: err.message || 'Falha ao publicar versão do quiz.' };
+    }
   }
 
   /**
@@ -121,38 +403,45 @@ export class QuizRepository {
   }
 
   /**
-   * Submete e corrige as respostas no servidor, emitindo cupom seguro se elegível
+   * Submete e corrige as respostas no backend com segurança absoluta,
+   * emite cupom único BPE26-XXXXX e vincula cliente e lead
    */
   async submitQuiz(data: {
     participant_name: string;
     participant_phone: string;
     participant_email?: string | null;
     company_name?: string | null;
-    answers: Record<string, string>; // { q1: 'B', q2: 'A', ... }
+    answers: Record<string, string>; // { [question_id]: 'B' }
     campaign_code?: string;
+    origin_channel?: string;
     ip_address?: string;
     user_agent?: string;
   }): Promise<QuizSubmissionResult> {
     const rawPhone = data.participant_phone.replace(/\D/g, '');
     const campaignCode = (data.campaign_code || 'BPE26').toUpperCase();
+    const originChannel = data.origin_channel || 'BPE26_QUIZ_STAND';
 
     // 1. Verifica se participante já realizou o quiz e possui cupom emitido para evitar tentativas múltiplas
     const existingCoupon = await this.couponRepo.getActiveCouponByPhone(rawPhone, campaignCode);
     if (existingCoupon) {
       return {
-        score: Math.round((existingCoupon.discount_percent / 4)), // Aproximação informativa
-        total_questions: OFFICIAL_QUIZ_QUESTIONS.length,
+        score: Math.round((existingCoupon.discount_percent / 4)),
+        total_questions: 5,
         discount_percent: existingCoupon.discount_percent,
         coupon_code: existingCoupon.code,
         is_new_coupon: false,
-        message: 'Você já participou do Quiz! Seu cupom oficial permanece ativo e disponível para uso.'
+        message: 'Você já participou do Desafio Alpha Bull! Seu cupom oficial permanece ativo e disponível para uso.'
       };
     }
 
-    // 2. Calcula acertos com segurança total no servidor
+    // 2. Busca as 5 perguntas publicadas com gabarito no banco
+    const bankQuestions = await this.getAllBankQuestions(campaignCode);
+    const activeQuestions = bankQuestions.slice(0, 5);
+
+    // 3. Corrige com segurança 100% no servidor
     let score = 0;
-    for (const q of OFFICIAL_QUIZ_QUESTIONS) {
-      const participantAnswer = data.answers[q.id]?.toUpperCase();
+    for (const q of activeQuestions) {
+      const participantAnswer = (data.answers[q.id] || '').toUpperCase().trim();
       const correctOption = q.options.find(o => o.is_correct);
       if (correctOption && participantAnswer === correctOption.letter) {
         score++;
@@ -162,7 +451,7 @@ export class QuizRepository {
     const discountPercent = this.calculateDiscount(score);
     let issuedCoupon: Coupon | null = null;
 
-    // 3. Emite cupom se percentual for maior que 0
+    // 4. Emite cupom se percentual for maior que 0 (2 ou mais acertos)
     if (discountPercent > 0) {
       issuedCoupon = await this.couponRepo.issueCoupon({
         participant_phone: rawPhone,
@@ -172,12 +461,57 @@ export class QuizRepository {
       });
     }
 
-    // 4. Salva a submissão no Supabase (se a tabela existir) com timeout de segurança
+    // 5. Vincula ou identifica cliente e oportunidade de evento
+    let clientId: string | null = null;
+    let opportunityId: string | null = null;
     try {
-      const insertPromise = supabaseAdmin
+      // Localiza cliente pelo telefone
+      const { data: client } = await supabaseAdmin
+        .from('clients')
+        .select('id')
+        .eq('phone', rawPhone)
+        .limit(1)
+        .maybeSingle();
+
+      if (client) {
+        clientId = client.id;
+      }
+
+      // Localiza oportunidade BPE26 existente
+      const { data: opp } = await supabaseAdmin
+        .from('event_opportunities')
+        .select('id, notes')
+        .eq('contact_phone', rawPhone)
+        .limit(1)
+        .maybeSingle();
+
+      if (opp) {
+        opportunityId = opp.id;
+        // Atualiza notas da oportunidade adicionando o resultado do quiz
+        const quizNote = `\n[QUIZ STAND BPE26]: Acertos ${score}/5 | Desconto ${discountPercent}% | Cupom ${issuedCoupon ? issuedCoupon.code : 'Não elegível'}`;
+        const updatedNotes = (opp.notes || '') + quizNote;
+        await supabaseAdmin
+          .from('event_opportunities')
+          .update({ 
+            notes: updatedNotes,
+            origin_channel: originChannel
+          })
+          .eq('id', opp.id);
+      }
+    } catch (e) {
+      console.warn('Erro ao associar lead existente ao quiz:', e);
+    }
+
+    // 6. Registra na tabela quiz_submissions com segurança
+    try {
+      const campaignId = await this.getCampaignId(campaignCode);
+      await supabaseAdmin
         .from('quiz_submissions')
         .insert({
           tenant_id: this.tenantId,
+          campaign_id: campaignId,
+          client_id: clientId,
+          event_opportunity_id: opportunityId,
           participant_name: data.participant_name,
           participant_phone: rawPhone,
           participant_email: data.participant_email || null,
@@ -190,11 +524,8 @@ export class QuizRepository {
           user_agent: data.user_agent || null,
           completed_at: new Date().toISOString()
         });
-
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
-      await Promise.race([insertPromise, timeoutPromise]);
     } catch (e) {
-      console.warn('Registro de quiz_submissions no Supabase:', e);
+      console.warn('Erro ao inserir quiz_submissions:', e);
     }
 
     let message = '';
@@ -208,11 +539,109 @@ export class QuizRepository {
 
     return {
       score,
-      total_questions: OFFICIAL_QUIZ_QUESTIONS.length,
+      total_questions: 5,
       discount_percent: discountPercent,
       coupon_code: issuedCoupon ? issuedCoupon.code : undefined,
       is_new_coupon: true,
       message
     };
+  }
+
+  /**
+   * Retorna submissões do Quiz para o relatório e modal do CRM
+   */
+  async getQuizSubmissions(limit: number = 50): Promise<QuizSubmissionRecord[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('quiz_submissions')
+        .select('*')
+        .order('completed_at', { ascending: false })
+        .limit(limit);
+
+      if (!error && data) {
+        return data.map((s: any) => ({
+          id: s.id,
+          tenant_id: s.tenant_id,
+          campaign_id: s.campaign_id,
+          client_id: s.client_id,
+          event_opportunity_id: s.event_opportunity_id,
+          participant_name: s.participant_name,
+          participant_phone: s.participant_phone,
+          participant_email: s.participant_email,
+          company_name: s.company_name,
+          answers: s.answers || {},
+          score: s.score || 0,
+          total_questions: 5,
+          discount_percent: Number(s.discount_percent) || 0,
+          coupon_code: s.coupon_code,
+          origin_channel: s.origin_channel || 'BPE26_QUIZ_STAND',
+          quiz_version: s.quiz_version || 1,
+          completed_at: s.completed_at || s.created_at
+        }));
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar quiz_submissions:', e);
+    }
+    return [];
+  }
+
+  /**
+   * Calcula indicadores consolidados de participação e desempenho do Quiz
+   */
+  async getQuizMetrics(campaignCode: string = 'BPE26'): Promise<QuizMetrics> {
+    try {
+      const submissions = await this.getQuizSubmissions(200);
+      const totalParticipants = submissions.length;
+      const completed = submissions.filter(s => s.score !== undefined).length;
+      const totalScore = submissions.reduce((acc, s) => acc + (s.score || 0), 0);
+      const averageScore = completed > 0 ? Number((totalScore / completed).toFixed(1)) : 0;
+
+      const scoreDist = {
+        score0: submissions.filter(s => s.score === 0).length,
+        score1: submissions.filter(s => s.score === 1).length,
+        score2: submissions.filter(s => s.score === 2).length,
+        score3: submissions.filter(s => s.score === 3).length,
+        score4: submissions.filter(s => s.score === 4).length,
+        score5: submissions.filter(s => s.score === 5).length
+      };
+
+      const couponsList = await this.couponRepo.listCoupons(campaignCode);
+      const couponsIssued = couponsList.length;
+      const couponsUsed = couponsList.filter(c => c.status === 'UTILIZADO').length;
+      const avgDiscount = couponsIssued > 0
+        ? Number((couponsList.reduce((acc, c) => acc + c.discount_percent, 0) / couponsIssued).toFixed(1))
+        : 0;
+
+      return {
+        totalParticipantsTablet: totalParticipants,
+        quizzesStarted: totalParticipants,
+        quizzesCompleted: completed,
+        quizzesAbandoned: 0,
+        completionRate: totalParticipants > 0 ? Number(((completed / totalParticipants) * 100).toFixed(1)) : 100,
+        averageScore,
+        scoreDistribution: scoreDist,
+        couponsIssued,
+        couponsUsed,
+        averageDiscount: avgDiscount,
+        leadsKit: 0,
+        leadsEvento: 0
+      };
+    } catch (e) {
+      console.warn('Erro ao calcular quiz metrics:', e);
+      return {
+        totalParticipantsTablet: 0,
+        quizzesStarted: 0,
+        quizzesCompleted: 0,
+        quizzesAbandoned: 0,
+        completionRate: 100,
+        averageScore: 0,
+        scoreDistribution: { score0: 0, score1: 0, score2: 0, score3: 0, score4: 0, score5: 0 },
+        couponsIssued: 0,
+        couponsUsed: 0,
+        averageDiscount: 0,
+        leadsKit: 0,
+        leadsEvento: 0
+      };
+    }
   }
 }

@@ -99,6 +99,87 @@ export interface QuizQuestionPublic {
   }[];
 }
 
+export interface QuizQuestionAdmin {
+  id: string;
+  tenant_id?: string;
+  campaign_id?: string;
+  order_num: number;
+  question_text: string;
+  explanation?: string | null;
+  is_active: boolean;
+  is_published: boolean;
+  published_order?: number | null;
+  category?: string;
+  options: {
+    id?: string;
+    letter: string;
+    option_text: string;
+    is_correct: boolean;
+  }[];
+  created_at?: string;
+}
+
+export interface QuizVersion {
+  id: string;
+  tenant_id?: string;
+  campaign_id?: string;
+  version_number: number;
+  title: string;
+  status: 'rascunho' | 'publicada' | 'arquivada';
+  question_ids: string[];
+  published_at?: string | null;
+  published_by?: string | null;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export interface QuizSubmissionRecord {
+  id: string;
+  tenant_id: string;
+  campaign_id?: string | null;
+  client_id?: string | null;
+  event_opportunity_id?: string | null;
+  participant_name: string;
+  participant_phone: string;
+  participant_email?: string | null;
+  company_name?: string | null;
+  answers: Record<string, string>;
+  score: number;
+  total_questions: number;
+  discount_percent: number;
+  coupon_code?: string | null;
+  origin_channel?: string;
+  quiz_version?: number;
+  status?: string;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  started_at?: string;
+  completed_at: string;
+  created_at?: string;
+}
+
+export interface QuizMetrics {
+  totalParticipantsTablet: number;
+  quizzesStarted: number;
+  quizzesCompleted: number;
+  quizzesAbandoned: number;
+  completionRate: number;
+  averageScore: number;
+  scoreDistribution: {
+    score0: number;
+    score1: number;
+    score2: number;
+    score3: number;
+    score4: number;
+    score5: number;
+  };
+  couponsIssued: number;
+  couponsUsed: number;
+  averageDiscount: number;
+  leadsKit: number;
+  leadsEvento: number;
+}
+
 export interface QuizSubmissionResult {
   score: number;
   total_questions: number;
@@ -125,3 +206,4 @@ export interface Coupon {
   max_discount_value?: number | null;
   restrictions: string;
 }
+
