@@ -13,10 +13,10 @@ Este documento define os contratos oficiais, especificações de segurança e en
    - `http://localhost:3000` (desenvolvimento)
    - `http://localhost:5173` (Vite)
 3. **Credenciais do Banco:** O navegador do visitante **NÃO possui acesso direto ao Supabase**. Toda a persistência é intermediada pelas rotas da API no servidor Next.js.
-4. **Proteção Anti-Abuso (Rate Limiting):**
-   - Inscrição de participantes: máx. **10 requisições/minuto** por IP e máx. **5 requisições/minuto** por telefone.
-   - Respostas do Quiz: máx. **6 requisições/minuto** por IP e máx. **5 requisições/minuto** por telefone.
-   - Consulta de cupons: máx. **10 requisições/minuto** por IP.
+4. **Proteção Anti-Abuso (Rate Limiting Adaptado ao Tablet Compartilhado):**
+   - Inscrição de participantes e Quiz: máx. **60 requisições/minuto** por IP (permitindo que dezenas de visitantes utilizem o mesmo tablet/WiFi do estande sem bloqueio indevido).
+   - Rate limit por participante: máx. **5 requisições/minuto** por número de telefone (evita flooding ou fraudes individuais).
+   - Consulta de cupons: máx. **60 requisições/minuto** por IP.
    - *HTTP 429 Too Many Requests* retornado em caso de excesso.
 5. **Proteção Anti-Bot (Honeypot):**
    - Os endpoints `POST` verificam os campos armadilha `_hp_check` e `website_url`. Devem permanecer vazios em requisições legítimas.
@@ -392,3 +392,51 @@ export async function cadastrarLeadBPE26(formData) {
   }
 }
 ```
+
+---
+
+## 5. Integração com o Tablet do Estande (`https://churrascosalvador.com/bpe26/quiz`)
+
+O tablet no estande da Alpha Bull executará o **Desafio Alpha Bull** em 5 etapas contínuas:
+
+1. **Identificação do Visitante:** O tablet envia `POST /api/bpe26/participante` com `origin_channel: 'BPE26_QUIZ_STAND'`. Se o visitante já tiver se cadastrado anteriormente pelo QR Code, o CRM reaproveita o cadastro sem duplicar o cliente.
+2. **Carregamento das Perguntas:** O tablet consulta `GET /api/bpe26/quiz` e recebe as **5 perguntas da versão publicada**, sem gabarito.
+3. **Respostas no Tablet:** O visitante responde às 5 perguntas de múltipla escolha.
+4. **Correção e Conquista de Benefício:** O tablet submete `POST /api/bpe26/quiz/responder` com as respostas `{ q1: 'B', ... }`. O servidor corrige, calcula o desconto (0%, 5%, 8%, 15% ou 20%) e emite um cupom exclusivo no padrão `BPE26-XXXXX` para participantes com 2 ou mais acertos.
+5. **Finalização Segura no Tablet:** O tablet exibe o resultado final e o código do cupom, limpando a sessão local ao clicar em "Novo Participante" para não expor dados ao próximo visitante.
+
+### Exemplo de Submissão do Quiz no Tablet:
+```javascript
+export async function submeterQuizEstande({ participantName, phone, email, company, answers }) {
+  const response = await fetch(`${CRM_API_BASE}/api/bpe26/quiz/responder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      participant_name: participantName,
+      participant_phone: phone.replace(/\D/g, ''),
+      participant_email: email,
+      company_name: company,
+      origin_channel: 'BPE26_QUIZ_STAND',
+      answers, // { [question_id]: 'A' | 'B' | 'C' | 'D' }
+      _hp_check: ''
+    })
+  });
+
+  const res = await response.json();
+  if (!response.ok) throw new Error(res.error || 'Erro ao submeter quiz');
+  return res.data;
+  // Retorna: { score: 4, total_questions: 5, discount_percent: 15, coupon_code: 'BPE26-XXXXX', message: '...' }
+}
+```
+
+---
+
+## 6. Endpoints Administrativos do CRM Alpha Bull
+
+Os endpoints abaixo são restritos a administradores autenticados com sessão ativa no CRM:
+
+- `GET /api/bpe26/admin/quiz/perguntas?campaign=BPE26`: Lista todas as perguntas cadastradas no banco com opções e resposta correta.
+- `POST /api/bpe26/admin/quiz/perguntas`: Cria ou edita pergunta com enunciado, 4 opções e seleção da resposta correta.
+- `POST /api/bpe26/admin/quiz/publicar`: Publica uma nova versão do quiz com exatamente 5 perguntas selecionadas.
+- `GET /api/bpe26/admin/quiz/resultado-lead?phone={numero}`: Retorna a submissão, respostas, pontuação e cupom emitido para um lead específico (consumido pelo modal de gerenciamento).
+

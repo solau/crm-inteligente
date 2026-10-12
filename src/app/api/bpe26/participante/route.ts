@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   const origin = request.headers.get('origin');
   const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || 'unknown';
 
-  // 1. Rate Limiting por IP (máximo 10 requisições por minuto)
-  const rl = checkRateLimit(`participante:${clientIp}`, 10, 60000);
+  // 1. Rate Limiting por IP (ajustado para 60 requisições por minuto para suportar o tablet compartilhado no estande)
+  const rl = checkRateLimit(`participante:${clientIp}`, 60, 60000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: `Muitas inscrições vindas deste dispositivo. Aguarde ${rl.resetInSec} segundos para tentar novamente.` },
@@ -150,7 +150,16 @@ export async function POST(request: Request) {
       notes,
       estimated_value: body.estimated_value ? Math.max(0, Number(body.estimated_value)) : undefined,
       campaign_code: 'BPE26',
-      origin_channel: body.origin_channel ? sanitizeString(body.origin_channel, 50) : 'QR Code',
+      origin_channel: (() => {
+        const raw = (body.origin_channel || body.origin || '').toString().toLowerCase();
+        if (raw.includes('quiz') || raw.includes('stand') || raw.includes('estande')) {
+          return 'BPE26_QUIZ_STAND';
+        }
+        if (raw.includes('qr') || body.origin_channel === 'QR Code') {
+          return 'BPE26_QRCODE';
+        }
+        return body.origin_channel ? sanitizeString(body.origin_channel, 50) : 'BPE26_QRCODE';
+      })(),
       origin_site: 'ChurrascoSalvador.com',
       utm_source: body.utm_source ? sanitizeString(body.utm_source, 50) : null,
       utm_medium: body.utm_medium ? sanitizeString(body.utm_medium, 50) : null,

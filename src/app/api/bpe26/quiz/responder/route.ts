@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   const origin = request.headers.get('origin');
   const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || 'unknown';
 
-  // 1. Rate Limiting por IP (máximo 6 tentativas por minuto)
-  const rl = checkRateLimit(`quiz:${clientIp}`, 6, 60000);
+  // 1. Rate Limiting por IP (ajustado para 60 requisições por minuto para suportar o tablet compartilhado no estande)
+  const rl = checkRateLimit(`quiz:${clientIp}`, 60, 60000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: `Limite de tentativas excedido. Aguarde ${rl.resetInSec} segundos para submeter novamente.` },
@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     const participantName = sanitizeString(body.participant_name, 100);
     const participantEmail = body.participant_email ? sanitizeString(body.participant_email, 120).toLowerCase() : null;
     const companyName = body.company_name ? sanitizeString(body.company_name, 120) : null;
+    const originChannel = body.origin_channel ? sanitizeString(body.origin_channel, 50) : 'BPE26_QUIZ_STAND';
 
     const repo = new QuizRepository();
     const result = await repo.submitQuiz({
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       company_name: companyName,
       answers: body.answers,
       campaign_code: 'BPE26',
+      origin_channel: originChannel,
       ip_address: clientIp,
       user_agent: userAgent
     });

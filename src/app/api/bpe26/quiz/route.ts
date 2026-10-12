@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const origin = request.headers.get('origin');
   try {
     const repo = new QuizRepository();
-    const questions = repo.getPublicQuizQuestions();
+    const questions = await repo.getPublicQuizQuestions();
 
     return NextResponse.json(
       {
